@@ -1,5 +1,5 @@
 {
-  "trained_at_utc": "2026-10-02T19:51:24+00:00",
+  "trained_at_utc": "2026-10-02T20:00:07+00:00",
   "model_type": "logistic_regression",
   "estimator_class": "Pipeline",
   "hyperparameters": {
@@ -189,7 +189,7 @@
   "random_seed": 42,
   "data_source": {
     "repo": "https://github.com/Greco1899/scrape_ufc_stats",
-    "commit": "25c908926ddb85ec5e5ea1232120c11b304fedd1",
+    "commit": "6fa0560a596553f2ee6567877343b9cb9820146f",
     "latest_fight_date": "2026-09-26",
     "n_fights": 8909,
     "n_binary_outcome_fights": 8754
@@ -209,7 +209,7 @@
     "calibration": "none",
     "refit_on_all_data": true,
     "agreement_with_evaluated_on_test": {
-      "mean_abs_diff": 0.018660440786285228,
+      "mean_abs_diff": 0.018660440786285214,
       "same_favourite_rate": 0.954070981210856
     }
   },
