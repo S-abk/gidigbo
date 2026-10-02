@@ -122,6 +122,10 @@ def ensure_data(commit: str | None = None) -> str | None:
     from src.build_dataset import build_all  # heavy import, only when a build is needed
 
     commit = commit or pinned_commit()
+    if (RAW_DIR / ".git").exists():
+        # A user-managed git checkout is never overwritten, so its HEAD -- not the model's
+        # pinned commit -- is what the processed data should match (else: rebuild loop).
+        commit = raw_source_commit()
     processed_ok = all((PROCESSED_DIR / f).exists() for f in PROCESSED_FILES)
     if processed_ok and (commit is None or processed_source_commit() == commit):
         return processed_source_commit()
