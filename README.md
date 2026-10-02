@@ -395,3 +395,10 @@ them forward as data accumulates.
 - **Betting odds** as an external *benchmark* for calibration only, not as a feature or product.
 - **SHAP** local explanations for tree models, and per-feature uncertainty or prediction intervals.
 - **Round prediction**, and a round-aware method model.
+
+## License
+
+This project's code is MIT licensed (see `LICENSE`). The data source,
+[Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats), is separately
+licensed under GPL-3.0; it is cloned by the user into `data/raw/` (see Quick start) and is not
+redistributed as part of this repository.
