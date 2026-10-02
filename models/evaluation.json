@@ -1,0 +1,635 @@
+{
+  "selected_model": "logistic_regression",
+  "selection_rule": "lowest cross-fitted validation log loss; ties within 0.002 go to logistic regression",
+  "validation": {
+    "logistic_regression": {
+      "walk_forward_cv_log_loss": 0.6611818263564504,
+      "calibration_method": "none",
+      "calibration_crossfit_log_loss": {
+        "none": 0.6560388910592546,
+        "sigmoid": 0.6560859507758743,
+        "isotonic": 0.6679213024282533
+      },
+      "validation_log_loss_crossfit": 0.6560388910592546
+    },
+    "random_forest": {
+      "walk_forward_cv_log_loss": 0.664036903060184,
+      "calibration_method": "sigmoid",
+      "calibration_crossfit_log_loss": {
+        "none": 0.6628396808459694,
+        "sigmoid": 0.6626119524027717,
+        "isotonic": 0.6655330820745868
+      },
+      "validation_log_loss_crossfit": 0.6626119524027717
+    },
+    "xgboost": {
+      "walk_forward_cv_log_loss": 0.6613215565681457,
+      "calibration_method": "sigmoid",
+      "calibration_crossfit_log_loss": {
+        "none": 0.6567515432834625,
+        "sigmoid": 0.6565102338790894,
+        "isotonic": 0.6615961194038391
+      },
+      "validation_log_loss_crossfit": 0.6565102338790894
+    }
+  },
+  "test_results": [
+    {
+      "model": "baseline_always_50",
+      "accuracy": 0.4753,
+      "log_loss": 0.6931,
+      "brier": 0.25,
+      "roc_auc": 0.5,
+      "n": 1437
+    },
+    {
+      "model": "baseline_win_pct_diff",
+      "accuracy": 0.6075,
+      "log_loss": 0.6686,
+      "brier": 0.2379,
+      "roc_auc": 0.6398,
+      "n": 1437
+    },
+    {
+      "model": "baseline_experience_record",
+      "accuracy": 0.6089,
+      "log_loss": 0.6702,
+      "brier": 0.2387,
+      "roc_auc": 0.6355,
+      "n": 1437
+    },
+    {
+      "model": "logistic_regression",
+      "accuracy": 0.6312,
+      "log_loss": 0.6365,
+      "brier": 0.2228,
+      "roc_auc": 0.6918,
+      "n": 1437
+    },
+    {
+      "model": "random_forest",
+      "accuracy": 0.6221,
+      "log_loss": 0.6488,
+      "brier": 0.2286,
+      "roc_auc": 0.6695,
+      "n": 1437
+    },
+    {
+      "model": "xgboost",
+      "accuracy": 0.6186,
+      "log_loss": 0.644,
+      "brier": 0.2265,
+      "roc_auc": 0.6754,
+      "n": 1437
+    }
+  ],
+  "test_diagnostics": {
+    "logistic_regression": {
+      "calibration": {
+        "mean_predicted": [
+          0.2540481250736959,
+          0.3423672591721826,
+          0.3904922126271587,
+          0.43499235530429686,
+          0.47362985689822573,
+          0.5122491884816147,
+          0.5510330629379344,
+          0.5990580589192307,
+          0.6517788037041122,
+          0.7386480476766936
+        ],
+        "fraction_positive": [
+          0.20833333333333334,
+          0.2708333333333333,
+          0.34265734265734266,
+          0.4027777777777778,
+          0.4791666666666667,
+          0.4825174825174825,
+          0.5277777777777778,
+          0.6083916083916084,
+          0.6527777777777778,
+          0.7777777777777778
+        ]
+      },
+      "confusion_matrix": {
+        "labels": [
+          "B wins",
+          "A wins"
+        ],
+        "matrix": [
+          [
+            484,
+            270
+          ],
+          [
+            260,
+            423
+          ]
+        ]
+      },
+      "probability_histogram": {
+        "counts": [
+          0,
+          0,
+          2,
+          17,
+          37,
+          64,
+          119,
+          157,
+          161,
+          187,
+          191,
+          144,
+          137,
+          108,
+          66,
+          32,
+          11,
+          4,
+          0,
+          0
+        ],
+        "bin_edges": [
+          0.0,
+          0.05,
+          0.1,
+          0.15000000000000002,
+          0.2,
+          0.25,
+          0.30000000000000004,
+          0.35000000000000003,
+          0.4,
+          0.45,
+          0.5,
+          0.55,
+          0.6000000000000001,
+          0.65,
+          0.7000000000000001,
+          0.75,
+          0.8,
+          0.8500000000000001,
+          0.9,
+          0.9500000000000001,
+          1.0
+        ]
+      },
+      "mean_abs_reversal_gap_before_symmetrisation": 7.967414712210805e-17
+    },
+    "random_forest": {
+      "calibration": {
+        "mean_predicted": [
+          0.2910003378451504,
+          0.3584548344312981,
+          0.3997805306112822,
+          0.4362908243806304,
+          0.4734515852841783,
+          0.5094917789242093,
+          0.5530229386121186,
+          0.5975640719946171,
+          0.6425180353457897,
+          0.7052040780604281
+        ],
+        "fraction_positive": [
+          0.2222222222222222,
+          0.2847222222222222,
+          0.4195804195804196,
+          0.3958333333333333,
+          0.4513888888888889,
+          0.5174825174825175,
+          0.5208333333333334,
+          0.5454545454545454,
+          0.6875,
+          0.7083333333333334
+        ]
+      },
+      "confusion_matrix": {
+        "labels": [
+          "B wins",
+          "A wins"
+        ],
+        "matrix": [
+          [
+            487,
+            267
+          ],
+          [
+            276,
+            407
+          ]
+        ]
+      },
+      "probability_histogram": {
+        "counts": [
+          0,
+          0,
+          0,
+          1,
+          13,
+          63,
+          112,
+          170,
+          186,
+          218,
+          157,
+          162,
+          162,
+          123,
+          58,
+          12,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bin_edges": [
+          0.0,
+          0.05,
+          0.1,
+          0.15000000000000002,
+          0.2,
+          0.25,
+          0.30000000000000004,
+          0.35000000000000003,
+          0.4,
+          0.45,
+          0.5,
+          0.55,
+          0.6000000000000001,
+          0.65,
+          0.7000000000000001,
+          0.75,
+          0.8,
+          0.8500000000000001,
+          0.9,
+          0.9500000000000001,
+          1.0
+        ]
+      },
+      "mean_abs_reversal_gap_before_symmetrisation": 0.011788701491447966
+    },
+    "xgboost": {
+      "calibration": {
+        "mean_predicted": [
+          0.2698066791312562,
+          0.3419444542378187,
+          0.3868635938717769,
+          0.4293664534472757,
+          0.47298928370906246,
+          0.5133243555372412,
+          0.5569764056967365,
+          0.6064934684680059,
+          0.6551943756639957,
+          0.7292063977155421
+        ],
+        "fraction_positive": [
+          0.1527777777777778,
+          0.3402777777777778,
+          0.3986013986013986,
+          0.3680555555555556,
+          0.5138888888888888,
+          0.5104895104895105,
+          0.5,
+          0.5804195804195804,
+          0.6527777777777778,
+          0.7361111111111112
+        ]
+      },
+      "confusion_matrix": {
+        "labels": [
+          "B wins",
+          "A wins"
+        ],
+        "matrix": [
+          [
+            473,
+            281
+          ],
+          [
+            267,
+            416
+          ]
+        ]
+      },
+      "probability_histogram": {
+        "counts": [
+          0,
+          0,
+          0,
+          6,
+          32,
+          78,
+          121,
+          166,
+          171,
+          166,
+          172,
+          143,
+          151,
+          124,
+          70,
+          32,
+          5,
+          0,
+          0,
+          0
+        ],
+        "bin_edges": [
+          0.0,
+          0.05000000074505806,
+          0.10000000149011612,
+          0.15000000596046448,
+          0.20000000298023224,
+          0.25,
+          0.30000001192092896,
+          0.3499999940395355,
+          0.4000000059604645,
+          0.44999998807907104,
+          0.5,
+          0.550000011920929,
+          0.6000000238418579,
+          0.6499999761581421,
+          0.699999988079071,
+          0.75,
+          0.800000011920929,
+          0.8500000238418579,
+          0.8999999761581421,
+          0.949999988079071,
+          1.0
+        ]
+      },
+      "mean_abs_reversal_gap_before_symmetrisation": 0.012408190406858921
+    }
+  },
+  "importance": {
+    "model_specific": {
+      "type": "standardized_coefficient",
+      "values": {
+        "n_fights_diff": 0.015095182237138884,
+        "win_pct_diff": 0.09881340867962551,
+        "wins_last3_diff": -0.043878322624341846,
+        "wins_last5_diff": 0.2521114636958768,
+        "win_pct_last5_diff": -0.13851905913235305,
+        "streak_diff": 0.01978535794250156,
+        "age_diff": -0.28596313553638997,
+        "height_in_diff": -0.013637253848866299,
+        "reach_in_diff": 0.10422867118339255,
+        "southpaw_diff": 0.07845586476111462,
+        "switch_diff": 0.020562453002005075,
+        "days_since_last_diff": -0.044664179396929224,
+        "slpm_diff": 0.10226650346849651,
+        "slpm_last3_diff": 0.03989677395028797,
+        "slpm_last5_diff": -0.10327663698729525,
+        "kd15_diff": 0.018334209095304286,
+        "sapm_diff": -0.012013922335194244,
+        "sapm_last3_diff": 0.02144258025973663,
+        "sapm_last5_diff": -0.11401437189857903,
+        "sig_def_diff": 0.13377592577547376,
+        "sig_diff_pm_diff": 0.10756165738145058,
+        "sig_diff_pm_last3_diff": 0.01716603778314373,
+        "sig_diff_pm_last5_diff": 0.0055155987288440156,
+        "sig_acc_diff": 0.06543429593808993,
+        "td15_diff": 0.23306723796071488,
+        "td15_last5_diff": 0.013351379314281925,
+        "td_acc_diff": -0.09572115446175115,
+        "ctrl_pct_diff": -0.03888334219684573,
+        "ctrl_pct_last5_diff": -0.021213967433438556,
+        "td_def_diff": 0.0632538415020787,
+        "sub15_diff": 0.009264354288054038,
+        "sub_win_share_diff": 0.02808144075580836,
+        "finish_rate_diff": 0.08960408107070353,
+        "ko_win_share_diff": 0.041314176115684685,
+        "dec_win_share_diff": -0.05404121183957143,
+        "fin_loss_rate_diff": -0.005305046317935326,
+        "avg_fight_min_diff": 0.19648735446800958,
+        "min_prior_fights": -1.5222021086968836e-16
+      }
+    },
+    "group_permutation_log_loss_increase_validation": {
+      "age": 0.02819471942717282,
+      "striking defence / damage absorbed": 0.007271633959585744,
+      "wrestling offence": 0.005506943375035855,
+      "finishing / durability": 0.0049674100252316,
+      "striking differential": 0.004666815379289879,
+      "UFC experience": 0.003777624576013294,
+      "recent form": 0.0024185649053842352,
+      "striking accuracy": 0.002163713342304252,
+      "takedown defence": 0.0021185793806847153,
+      "activity (days since last fight)": 0.0013709874455336336,
+      "striking output": 0.0011278016308703398,
+      "stance": 0.0011232988088902608,
+      "reach": 0.0008456820570917012,
+      "submission threat": 0.0005110092626481544,
+      "height": -0.0003239858169503673
+    },
+    "logistic_regression_standardized_coefficients": {
+      "n_fights_diff": 0.015095182237138884,
+      "win_pct_diff": 0.09881340867962551,
+      "wins_last3_diff": -0.043878322624341846,
+      "wins_last5_diff": 0.2521114636958768,
+      "win_pct_last5_diff": -0.13851905913235305,
+      "streak_diff": 0.01978535794250156,
+      "age_diff": -0.28596313553638997,
+      "height_in_diff": -0.013637253848866299,
+      "reach_in_diff": 0.10422867118339255,
+      "southpaw_diff": 0.07845586476111462,
+      "switch_diff": 0.020562453002005075,
+      "days_since_last_diff": -0.044664179396929224,
+      "slpm_diff": 0.10226650346849651,
+      "slpm_last3_diff": 0.03989677395028797,
+      "slpm_last5_diff": -0.10327663698729525,
+      "kd15_diff": 0.018334209095304286,
+      "sapm_diff": -0.012013922335194244,
+      "sapm_last3_diff": 0.02144258025973663,
+      "sapm_last5_diff": -0.11401437189857903,
+      "sig_def_diff": 0.13377592577547376,
+      "sig_diff_pm_diff": 0.10756165738145058,
+      "sig_diff_pm_last3_diff": 0.01716603778314373,
+      "sig_diff_pm_last5_diff": 0.0055155987288440156,
+      "sig_acc_diff": 0.06543429593808993,
+      "td15_diff": 0.23306723796071488,
+      "td15_last5_diff": 0.013351379314281925,
+      "td_acc_diff": -0.09572115446175115,
+      "ctrl_pct_diff": -0.03888334219684573,
+      "ctrl_pct_last5_diff": -0.021213967433438556,
+      "td_def_diff": 0.0632538415020787,
+      "sub15_diff": 0.009264354288054038,
+      "sub_win_share_diff": 0.02808144075580836,
+      "finish_rate_diff": 0.08960408107070353,
+      "ko_win_share_diff": 0.041314176115684685,
+      "dec_win_share_diff": -0.05404121183957143,
+      "fin_loss_rate_diff": -0.005305046317935326,
+      "avg_fight_min_diff": 0.19648735446800958,
+      "min_prior_fights": -1.5222021086968836e-16
+    }
+  },
+  "periods": {
+    "train": {
+      "start": "2001-02-23",
+      "end": "2021-12-18",
+      "n_fights": 6046
+    },
+    "validation": {
+      "start": "2022-01-15",
+      "end": "2023-12-16",
+      "n_fights": 1010
+    },
+    "test": {
+      "start": "2024-01-13",
+      "end": "2026-09-26",
+      "n_fights": 1437
+    },
+    "min_train_date": "2001-01-01"
+  },
+  "method_model": {
+    "classes": [
+      "KO/TKO",
+      "SUB",
+      "DEC"
+    ],
+    "C": 0.01,
+    "min_train_date": "2010-01-01",
+    "n_train": 5043,
+    "n_validation": 1008,
+    "n_test": 1434,
+    "validation_log_loss_by_C": {
+      "0.01": 0.9970476500106995,
+      "0.1": 1.000453061063764,
+      "1.0": 1.0018262422392246
+    },
+    "test": {
+      "model": {
+        "n": 1434,
+        "log_loss": 0.9257594175792048,
+        "accuracy": 0.5550906555090656
+      },
+      "baseline_overall_rates": {
+        "n": 1434,
+        "log_loss": 1.0172078084460536,
+        "accuracy": 0.49721059972105996
+      },
+      "baseline_weight_class_rates": {
+        "n": 1434,
+        "log_loss": 1.0045233229226767,
+        "accuracy": 0.5139470013947002
+      }
+    },
+    "test_mean_predicted": {
+      "KO/TKO": 0.3431,
+      "SUB": 0.1575,
+      "DEC": 0.4995
+    },
+    "test_actual_share": {
+      "KO/TKO": 0.3298,
+      "SUB": 0.1729,
+      "DEC": 0.4972
+    },
+    "standardized_coefficients": {
+      "KO/TKO": {
+        "w_ko_win_share": 0.0576,
+        "w_sub_win_share": -0.0831,
+        "w_dec_win_share": 0.046,
+        "w_finish_rate": 0.001,
+        "w_slpm": 0.079,
+        "w_kd15": 0.1169,
+        "w_sub15": -0.0168,
+        "w_td15": -0.0474,
+        "w_sig_acc": 0.0217,
+        "w_ctrl_pct": -0.0791,
+        "w_n_fights": -0.0221,
+        "w_avg_fight_min": -0.0309,
+        "w_age": -0.0028,
+        "l_fin_loss_rate": 0.0359,
+        "l_sapm": 0.0446,
+        "l_sig_def": 0.006,
+        "l_td_def": 0.0372,
+        "l_n_fights": 0.0117,
+        "l_avg_fight_min": -0.0491,
+        "l_age": 0.0967,
+        "l_ko_win_share": -0.0533,
+        "l_sub_win_share": -0.0066,
+        "l_slpm": -0.0335,
+        "l_td15": 0.0343,
+        "wl_sig_diff_pm_diff": -0.0057,
+        "wl_reach_in_diff": -0.0134,
+        "wl_win_pct_diff": -0.0329,
+        "weight_lbs": 0.1629,
+        "is_female": -0.0637,
+        "five_rounds": 0.103,
+        "is_title": -0.0265
+      },
+      "SUB": {
+        "w_ko_win_share": -0.0581,
+        "w_sub_win_share": 0.1094,
+        "w_dec_win_share": -0.0473,
+        "w_finish_rate": 0.0238,
+        "w_slpm": -0.0904,
+        "w_kd15": -0.1117,
+        "w_sub15": 0.1418,
+        "w_td15": -0.0112,
+        "w_sig_acc": 0.041,
+        "w_ctrl_pct": 0.0683,
+        "w_n_fights": -0.0117,
+        "w_avg_fight_min": -0.0323,
+        "w_age": -0.0448,
+        "l_fin_loss_rate": 0.0736,
+        "l_sapm": -0.0409,
+        "l_sig_def": -0.0398,
+        "l_td_def": -0.038,
+        "l_n_fights": -0.0668,
+        "l_avg_fight_min": -0.0454,
+        "l_age": -0.0509,
+        "l_ko_win_share": 0.0517,
+        "l_sub_win_share": -0.0258,
+        "l_slpm": -0.0043,
+        "l_td15": -0.0179,
+        "wl_sig_diff_pm_diff": -0.116,
+        "wl_reach_in_diff": 0.0617,
+        "wl_win_pct_diff": 0.0343,
+        "weight_lbs": -0.0881,
+        "is_female": 0.0173,
+        "five_rounds": 0.0278,
+        "is_title": 0.0393
+      },
+      "DEC": {
+        "w_ko_win_share": 0.0006,
+        "w_sub_win_share": -0.0263,
+        "w_dec_win_share": 0.0013,
+        "w_finish_rate": -0.0248,
+        "w_slpm": 0.0114,
+        "w_kd15": -0.0052,
+        "w_sub15": -0.125,
+        "w_td15": 0.0587,
+        "w_sig_acc": -0.0628,
+        "w_ctrl_pct": 0.0108,
+        "w_n_fights": 0.0338,
+        "w_avg_fight_min": 0.0631,
+        "w_age": 0.0476,
+        "l_fin_loss_rate": -0.1094,
+        "l_sapm": -0.0037,
+        "l_sig_def": 0.0338,
+        "l_td_def": 0.0008,
+        "l_n_fights": 0.0551,
+        "l_avg_fight_min": 0.0945,
+        "l_age": -0.0458,
+        "l_ko_win_share": 0.0016,
+        "l_sub_win_share": 0.0325,
+        "l_slpm": 0.0379,
+        "l_td15": -0.0164,
+        "wl_sig_diff_pm_diff": 0.1217,
+        "wl_reach_in_diff": -0.0483,
+        "wl_win_pct_diff": -0.0013,
+        "weight_lbs": -0.0747,
+        "is_female": 0.0464,
+        "five_rounds": -0.1308,
+        "is_title": -0.0128
+      }
+    },
+    "test_joint_six_way": {
+      "n": 1434,
+      "model_log_loss": 1.5617772500607259,
+      "baseline_uniform_log_loss": 1.791759469228055,
+      "baseline_winner_model_x_method_rates_log_loss": 1.653225640927575
+    }
+  }
+}

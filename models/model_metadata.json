@@ -1,0 +1,195 @@
+{
+  "trained_at_utc": "2026-10-02T04:45:08+00:00",
+  "model_type": "logistic_regression",
+  "estimator_class": "Pipeline",
+  "hyperparameters": {
+    "C": 0.01
+  },
+  "calibration_method": "none",
+  "prediction_rule": "symmetrised: P(A) = 0.5 * (p(A,B) + 1 - p(B,A)), after calibration",
+  "feature_names": [
+    "n_fights_diff",
+    "win_pct_diff",
+    "wins_last3_diff",
+    "wins_last5_diff",
+    "win_pct_last5_diff",
+    "streak_diff",
+    "age_diff",
+    "height_in_diff",
+    "reach_in_diff",
+    "southpaw_diff",
+    "switch_diff",
+    "days_since_last_diff",
+    "slpm_diff",
+    "slpm_last3_diff",
+    "slpm_last5_diff",
+    "kd15_diff",
+    "sapm_diff",
+    "sapm_last3_diff",
+    "sapm_last5_diff",
+    "sig_def_diff",
+    "sig_diff_pm_diff",
+    "sig_diff_pm_last3_diff",
+    "sig_diff_pm_last5_diff",
+    "sig_acc_diff",
+    "td15_diff",
+    "td15_last5_diff",
+    "td_acc_diff",
+    "ctrl_pct_diff",
+    "ctrl_pct_last5_diff",
+    "td_def_diff",
+    "sub15_diff",
+    "sub_win_share_diff",
+    "finish_rate_diff",
+    "ko_win_share_diff",
+    "dec_win_share_diff",
+    "fin_loss_rate_diff",
+    "avg_fight_min_diff",
+    "min_prior_fights"
+  ],
+  "diff_features": [
+    "n_fights_diff",
+    "win_pct_diff",
+    "wins_last3_diff",
+    "wins_last5_diff",
+    "win_pct_last5_diff",
+    "streak_diff",
+    "age_diff",
+    "height_in_diff",
+    "reach_in_diff",
+    "southpaw_diff",
+    "switch_diff",
+    "days_since_last_diff",
+    "slpm_diff",
+    "slpm_last3_diff",
+    "slpm_last5_diff",
+    "kd15_diff",
+    "sapm_diff",
+    "sapm_last3_diff",
+    "sapm_last5_diff",
+    "sig_def_diff",
+    "sig_diff_pm_diff",
+    "sig_diff_pm_last3_diff",
+    "sig_diff_pm_last5_diff",
+    "sig_acc_diff",
+    "td15_diff",
+    "td15_last5_diff",
+    "td_acc_diff",
+    "ctrl_pct_diff",
+    "ctrl_pct_last5_diff",
+    "td_def_diff",
+    "sub15_diff",
+    "sub_win_share_diff",
+    "finish_rate_diff",
+    "ko_win_share_diff",
+    "dec_win_share_diff",
+    "fin_loss_rate_diff",
+    "avg_fight_min_diff"
+  ],
+  "context_features": [
+    "min_prior_fights"
+  ],
+  "feature_groups": {
+    "UFC experience": [
+      "n_fights",
+      "win_pct"
+    ],
+    "recent form": [
+      "wins_last3",
+      "wins_last5",
+      "win_pct_last5",
+      "streak"
+    ],
+    "age": [
+      "age"
+    ],
+    "height": [
+      "height_in"
+    ],
+    "reach": [
+      "reach_in"
+    ],
+    "stance": [
+      "southpaw",
+      "switch"
+    ],
+    "activity (days since last fight)": [
+      "days_since_last"
+    ],
+    "striking output": [
+      "slpm",
+      "slpm_last3",
+      "slpm_last5",
+      "kd15"
+    ],
+    "striking defence / damage absorbed": [
+      "sapm",
+      "sapm_last3",
+      "sapm_last5",
+      "sig_def"
+    ],
+    "striking differential": [
+      "sig_diff_pm",
+      "sig_diff_pm_last3",
+      "sig_diff_pm_last5"
+    ],
+    "striking accuracy": [
+      "sig_acc"
+    ],
+    "wrestling offence": [
+      "td15",
+      "td15_last5",
+      "td_acc",
+      "ctrl_pct",
+      "ctrl_pct_last5"
+    ],
+    "takedown defence": [
+      "td_def"
+    ],
+    "submission threat": [
+      "sub15",
+      "sub_win_share"
+    ],
+    "finishing / durability": [
+      "finish_rate",
+      "ko_win_share",
+      "dec_win_share",
+      "fin_loss_rate",
+      "avg_fight_min"
+    ]
+  },
+  "periods": {
+    "train": {
+      "start": "2001-02-23",
+      "end": "2021-12-18",
+      "n_fights": 6046
+    },
+    "validation": {
+      "start": "2022-01-15",
+      "end": "2023-12-16",
+      "n_fights": 1010
+    },
+    "test": {
+      "start": "2024-01-13",
+      "end": "2026-09-26",
+      "n_fights": 1437
+    },
+    "min_train_date": "2001-01-01"
+  },
+  "n_training_examples": 6046,
+  "n_training_rows_mirrored": 12092,
+  "random_seed": 42,
+  "data_source": {
+    "repo": "https://github.com/Greco1899/scrape_ufc_stats",
+    "commit": "25c908926ddb85ec5e5ea1232120c11b304fedd1",
+    "latest_fight_date": "2026-09-26"
+  },
+  "test_metrics": {
+    "model": "logistic_regression",
+    "n": 1437,
+    "accuracy": 0.6311760612386917,
+    "log_loss": 0.636541970639657,
+    "brier": 0.22280963327784703,
+    "roc_auc": 0.6917736930611167
+  }
+}
