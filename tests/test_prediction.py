@@ -143,3 +143,15 @@ def test_explanations_are_not_degenerate(predictor):
                 moved += abs(f["impact"]) > 1e-9
     assert total > 0
     assert moved / total >= 0.9, f"only {moved}/{total} non-zero factor groups moved the probability"
+
+
+def test_round_odds_form_a_distribution(predictor):
+    if predictor.method_model is None or predictor.round_split is None:
+        pytest.skip("no method model / round split")
+    a, b = _pairs(predictor, n=1, seed=6)[0]
+    for rounds in (3, 5):
+        m = predictor.predict_fight(a, b, explain=False, scheduled_rounds=rounds)["method"]
+        r = m["rounds"]
+        assert len(r["by_round"]) == rounds
+        assert r["distance"] == pytest.approx(m["overall"]["DEC"])  # distance = P(decision)
+        assert sum(r["by_round"]) + r["distance"] == pytest.approx(1.0)

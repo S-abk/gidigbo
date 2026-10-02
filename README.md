@@ -383,18 +383,19 @@ clean estimate.
 A second model, `src/method_model.py`, estimates **how a fight ends given who wins**:
 P(KO/TKO, submission, decision | winner beat loser). It is a multinomial logistic regression on the
 same leakage-safe pre-fight profiles:
-- the winner's finishing profile (KO/sub/decision win shares, knockdowns, submission attempts,
-  output)
-- the loser's durability (rate of being finished, strikes absorbed, defence)
-- a few winner-minus-loser differences
+- the same 16-stat profile for both winner and loser: finishing record, knockdowns, submission
+  attempts, output and accuracy, durability, defence, experience and age
+- winner-minus-loser differences in the Glicko rating, win rate, strike differential and reach
 - bout context: weight class, women's bout, 5 rounds, title fight
 
 Combining it with the win model gives a six-way outcome that sums to 100%:
 `P(A by KO) = P(A wins) × P(KO | A beats B)`. Swapping the fighters mirrors it exactly.
 
 - **Training window.** It trains on 2010–2021 fights (5,043), because the decision share
-  rose from ~37% in 2001–10 to ~49% after 2010. C is chosen on 2022–23, and it is tested once on
-  2024+ (1,434 fights).
+  rose from ~37% in 2001–10 to ~49% after 2010. It is tested once on 2024+ (1,434 fights).
+- **Regularisation.** C is chosen on a holdout *inside* the training period (2020–21), from a grid
+  of 0.0003 to 1. It used to be chosen on validation, from a grid whose smallest value (0.01) was
+  above the best one, which made the reported validation score slightly optimistic.
 - **Excluded outcomes.** DQs and other rare outcomes (<1%) are not modelled.
 - **Bout context.** In the app you can set weight class, 3 or 5 rounds and title fight. These change
   only the method split, never the win probability. The defaults are the fighters' shared division
@@ -403,7 +404,7 @@ Combining it with the win model gives a six-way outcome that sums to 100%:
 
 | Test (2024+) | Log loss | Top-method accuracy |
 |---|---:|---:|
-| **Method model** | **0.926** | **55.5%** |
+| **Method model** | **0.929** | **55.2%** |
 | Weight-class method rates | 1.005 | 51.4% |
 | Overall method rates | 1.017 | 49.7% |
 
@@ -411,16 +412,45 @@ On the test set, average predicted shares were close to the actual ones:
 
 | | KO/TKO | Submission | Decision |
 |---|---:|---:|---:|
-| Predicted | 34.3% | 15.8% | 50.0% |
+| Predicted | 34.3% | 16.5% | 49.2% |
 | Actual | 33.0% | 17.3% | 49.7% |
 
 Full six-way outcome test log loss:
 
 | Approach | Log loss |
 |---|---:|
-| **Win model × method model** | **1.553** |
+| **Win model × method model** | **1.556** |
 | Win model × average method rates | 1.645 |
 | Uniform guess | 1.792 |
+
+**October 2026 upgrade.** The richer inputs and in-training C tuning replaced a smaller,
+asymmetric input set.
+- **Decision rule:** fixed in advance, judged on validation with both versions' C tuned inside
+  training. Validation improved by −0.0030 [−0.0059, −0.0003].
+- **Test, scored once afterwards:**
+
+  | Change | Test log loss [95% CI] |
+  |---|---|
+  | The richer inputs | −0.0026 [−0.0048, −0.0004], confirmed |
+  | The more regularised C the holdout picked (0.001 vs the old 0.01) | +0.0057 [+0.0000, +0.0110] |
+  | Net | +0.003 [−0.002, +0.009], not significant |
+
+- **C was not re-picked** after seeing the test result, because that would be selecting on the
+  test set.
+
+### When it ends (round of finish)
+
+- **How it's computed.** *Goes the distance* is the model's P(decision), summed over both
+  fighters. The rest is spread over rounds by the historical share of finishes in each round, for 3-
+  or 5-round bouts (`models/round_split.json`): about 52% / 32% / 16% for rounds 1–3. A Monte Carlo
+  fight simulator and a competing-risks hazard model were both prototyped (see Research below) and
+  did no better than this.
+- **Scores**, over outcomes R1…Rk or distance:
+
+  | | This approach | Historical round / decision rates |
+  |---|---:|---:|
+  | Validation (n = 1,000) | 1.209 | 1.241 |
+  | Test (n = 1,422) | 1.184 | 1.218 |
 
 ## Upcoming cards
 
@@ -459,8 +489,9 @@ in its data, and its website now blocks scripted access with a JavaScript browse
 ## Limitations
 
 - **UFC-only history.** Pre-UFC and regional records are not in UFCStats, so UFC debutants look like
-  blank slates (shrunk to league averages). The app warns when a fighter has fewer than 3 prior UFC
-  fights.
+  blank slates (shrunk to league averages). The app notes when a fighter has fewer than 3 prior UFC
+  fights. The note is informational: on 2017–23 out-of-sample fights, predictions involving such
+  fighters were not less accurate or worse calibrated.
 - **Snapshot attributes.** Height, reach and DOB come from a current snapshot. DOB is missing for some
   fighters (a neutral age of 30 is used), and reach is missing for many older fighters.
 - **Name-based identity.** The fight files have no fighter IDs. Aliases and duplicate-name
@@ -554,8 +585,35 @@ workflows after 60 days without repository activity. If that happens, re-enable 
 tab. The app's staleness warning is the backstop: it turns amber, then red, if refreshes stop. A failed run leaves the committed model untouched and shows red in the Actions tab. By default,
 GitHub emails failures of scheduled workflows to whoever last edited the workflow's schedule.
 
+## Research: stochastic approaches (October 2026)
+
+Five alternatives were prototyped by separate research agents. Each was held to the same rules:
+leakage-safe, judged only on 2017–21 walk-forward CV and 2022–23 validation, never on the test set.
+Prototypes live outside the repository.
+
+| Approach | Finding | Decision |
+|---|---|---|
+| Dynamic skill ratings (Kalman/TrueSkill-style filter, Glicko-2) | When tuned by CV it converges to the current Glicko-1; replacing or adding it changed validation by ≤ 0.001; Glicko-2 volatility is unidentifiable with about one fight per fighter per period | Not adopted |
+| Empirical-Bayes shrinkage (Beta-Binomial / Gamma-Poisson, per-division priors) | No change beyond about 1 SE; the model is insensitive to prior strength over a 16× range, and per-division means cancel in A − B differences | Not adopted |
+| Monte Carlo round-by-round simulator | Win log loss 0.669 vs 0.647; adds nothing as an extra input; its round odds are no better than P(decision) × historical round split | Not adopted; its simple round-odds version was |
+| Discrete-time competing-risks hazard (KO / sub per round, decision as censoring) | Method gain came from richer inputs, not the hazard structure | Not adopted; its input set was |
+| Uncertainty (Laplace posterior, bootstrap, Venn-Abers) | Interval width did not identify less reliable predictions; bagging gave nothing; fights with < 3 prior UFC fights were not less accurate | Not shipped; the limited-history warning reworded |
+
+**Leads tested afterwards, with decision rules fixed in advance:**
+- **Time-decay weighting of fighter history.** The 1.5-year half-life chosen on CV improved
+  validation by only −0.0006 [−0.0045, +0.0031]. Not adopted.
+- **Data-estimated prior means for win rate and rate of being finished** (0.47 and 0.28, vs 0.50
+  and 0.15). Neutral for the win model, but they made the method model worse by +0.0011 ± 0.0004.
+  Not adopted.
+- **Submissions** look under-predicted on 2022–23 (about 17% vs 19.8%). The yearly share ranges
+  from 15% to 24% with no real trend (z = 1.2 vs the training share), so this is year-to-year
+  variation, not drift.
+
 ## Recommendations for the next version
 
+- **Method-model C:** tune it by walk-forward CV over several years, as the win model does, instead
+  of one 2-year holdout. On the test set the single holdout's choice cost about as much as the
+  richer inputs gained.
 - **Clean re-evaluation:** once enough post-2026 fights exist, score the current pipeline on a new
   test period that no design decision has touched. The current test set has been viewed (see the
   Glicko backtest disclosure).

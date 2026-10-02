@@ -340,6 +340,17 @@ def method_section(result: dict):
     for side, p in [("A", pa), ("B", pb)]:
         g = m[f"given_{side}_wins"]
         st.caption(f"If {p['name']} wins: " + " · ".join(f"{METHOD_LABELS[k]} {g[k]:.0%}" for k in METHOD_LABELS))
+    rounds = m.get("rounds")
+    if rounds:
+        st.markdown("**When it ends**")
+        labels_r = [f"Round {i + 1}" for i in range(len(rounds["by_round"]))] + ["Goes the distance"]
+        vals_r = rounds["by_round"] + [rounds["distance"]]
+        fig_r = go.Figure(go.Bar(x=labels_r, y=vals_r, marker_color=[STEEL] * len(rounds["by_round"]) + [GOLD],
+                                 text=[f"{v:.0%}" for v in vals_r], textposition="outside"))
+        fig_r.update_layout(yaxis=dict(tickformat=".0%", rangemode="tozero"), showlegend=False)
+        st.plotly_chart(layout(fig_r, 260), width="stretch")
+        st.caption("Chance it goes the distance comes from the model above; the chance of ending early is spread "
+                   "over rounds by the historical share of finishes in each round for 3- or 5-round bouts.")
     st.caption("Weight class, rounds and title only affect the method breakdown, not the win probability. "
                "DQs and other rare outcomes (under 1% of fights) are not modelled.")
 
@@ -715,6 +726,7 @@ with tab_perf:
         st.caption(f"Multinomial logistic regression for KO/TKO vs submission vs decision, given who wins. "
                    f"Trained on {mm['n_train']:,} fights ({mm['min_train_date'][:4]}–2021, after the shift toward "
                    f"decisions had settled); same chronological split and the same pre-fight features. "
+                   f"Regularisation chosen on {mm.get('c_selection', 'validation')}. "
                    f"Scored once on {mm['n_test']:,} test fights.")
         t = mm["test"]
         mt = pd.DataFrame({
@@ -735,6 +747,10 @@ with tab_perf:
             st.caption(f"Full six-way outcome (winner × method) test log loss: {j['model_log_loss']:.3f}, versus "
                        f"{j['baseline_winner_model_x_method_rates_log_loss']:.3f} for the win model × average method "
                        f"rates and {j['baseline_uniform_log_loss']:.3f} for a uniform guess (lower is better).")
+        rf = (mm.get("round_of_finish") or {}).get("test")
+        if rf:
+            st.caption(f"Round of finish (rounds 1–5 or the distance, {rf['n']:,} test fights): log loss "
+                       f"{rf['model_log_loss']:.3f} versus {rf['naive_log_loss']:.3f} for historical round rates.")
 
 
 # --------------------------------------------------------------------------- tab 4: insights

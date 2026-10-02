@@ -28,9 +28,9 @@ from src.config import (MIN_TRAIN_DATE, MODELS_DIR, PRODUCTION_REFIT, RANDOM_SEE
                         RETRAIN_AFTER_DAYS, TEST_START, VALIDATION_START, WALK_FORWARD_YEARS)
 from src.fetch_data import raw_source_commit
 from src.features import (CONTEXT_FEATURES, DIFF_FEATURES, FEATURE_GROUPS, MODEL_FEATURES,
-                          build_training_table, mirror)
-from src.method_model import (METHODS, build_method_table, predict_method_proba,
-                               refit_method_model_all, train_method_model)
+                          build_training_table, compute_prefight_features, matchup_features, mirror)
+from src.method_model import (METHOD_MIN_TRAIN_DATE, METHODS, build_method_table, method_given_winner,
+                               predict_method_proba, refit_method_model_all, round_split, train_method_model)
 from src.modeling import HAS_XGB, MODEL_GRIDS, Calibrator, FightModel, make_model
 
 # If another model's validation log loss is within this margin of logistic
@@ -180,6 +180,47 @@ def joint_outcome_scores(win_model: FightModel, method_model, test: pd.DataFrame
     return out
 
 
+def round_of_finish_scores(win_model: FightModel, method_model, split: dict, data: dict, start, end) -> dict:
+    """Log loss of the round outcome {R1..Rk, decision} for 3/5-round bouts in [start, end).
+
+    Model: P(decision) from P(A wins) x P(method | winner) for both fighters; the rest is
+    spread over rounds by `split`. Naive baseline: training-period rates of each round /
+    decision by scheduled rounds.
+    """
+    f = data["fights"]
+    pool = f[f["winner_side"].notna() & f["method"].isin(METHODS) & f["scheduled_rounds"].isin([3, 5])]
+    sel = pool[(pool["event_date"] >= pd.Timestamp(start)) & (pool["event_date"] < pd.Timestamp(end))].reset_index(drop=True)
+    naive_pool = pool[(pool["event_date"] >= METHOD_MIN_TRAIN_DATE) & (pool["event_date"] < VALIDATION_START)]
+    prof = compute_prefight_features(data["appearances"], data["fighters"]).set_index(["fight_id", "fighter_id"])
+    p1 = prof.loc[list(zip(sel["fight_id"], sel["fighter_1_id"]))].reset_index()
+    p2 = prof.loc[list(zip(sel["fight_id"], sel["fighter_2_id"]))].reset_index()
+    pa = win_model.predict_proba_symmetric(matchup_features(p1, p2))
+    ctx = sel[["weight_lbs", "is_female", "scheduled_rounds", "is_title"]]
+    dec = METHODS.index("DEC")
+    p_dec = pa * method_given_winner(method_model, p1, p2, ctx)[:, dec] \
+        + (1 - pa) * method_given_winner(method_model, p2, p1, ctx)[:, dec]
+
+    def outcome(row) -> int:  # index into [R1..Rk, DEC]
+        k = int(row.scheduled_rounds)
+        return k if row.method == "DEC" else min(int(row.end_round), k) - 1
+
+    model_ll, naive_ll = [], []
+    for k in (3, 5):
+        idx = np.flatnonzero(sel["scheduled_rounds"].to_numpy() == k)
+        if not len(idx):
+            continue
+        y = np.array([outcome(r) for r in sel.iloc[idx].itertuples()])
+        probs = np.column_stack([np.outer(1 - p_dec[idx], split[str(k)]), p_dec[idx]])
+        model_ll.append(-np.log(np.clip(probs[np.arange(len(idx)), y], 1e-12, 1)))
+        nk = naive_pool[naive_pool["scheduled_rounds"] == k]
+        ny = np.array([outcome(r) for r in nk.itertuples()])
+        rates = (np.bincount(ny, minlength=k + 1) + 1.0) / (len(ny) + k + 1)
+        naive_ll.append(-np.log(rates[y]))
+    m, n_ = np.concatenate(model_ll), np.concatenate(naive_ll)
+    return {"n": int(len(m)), "model_log_loss": float(m.mean()), "naive_log_loss": float(n_.mean()),
+            "naive": "training-period rates of R1..Rk / decision by scheduled rounds"}
+
+
 def refit_for_production(kind: str, params: dict, calibration: str, table: pd.DataFrame) -> tuple[FightModel, dict]:
     """The selected configuration refit on every fight from MIN_TRAIN_DATE to the latest.
 
@@ -279,6 +320,15 @@ def main() -> None:
     method_model, method_report = train_method_model(data["fights"], data["appearances"], data["fighters"], log=log)
     method_report["test_joint_six_way"] = joint_outcome_scores(prod, method_model, test, data)
     joblib.dump(method_model, MODELS_DIR / "evaluated_method_model.joblib")
+    split_eval = round_split(data["fights"], METHOD_MIN_TRAIN_DATE, VALIDATION_START)
+    method_report["round_of_finish"] = {
+        "validation": round_of_finish_scores(prod, method_model, split_eval, data, VALIDATION_START, TEST_START),
+        "test": round_of_finish_scores(prod, method_model, split_eval, data, TEST_START, "2100-01-01"),
+        "split_evaluated": split_eval,
+    }
+    for period, r in method_report["round_of_finish"].items():
+        if period in ("validation", "test"):
+            log(f"round of finish ({period}, n={r['n']}): model {r['model_log_loss']:.4f} vs naive {r['naive_log_loss']:.4f}")
 
     # ---- 6. production refit: same configurations, every fight through the latest event
     if PRODUCTION_REFIT:
@@ -305,6 +355,9 @@ def main() -> None:
     method_report["production_fit"] = method_fit
     joblib.dump(deployed, MODELS_DIR / "model.joblib")
     joblib.dump(deployed_method, MODELS_DIR / "method_model.joblib")
+    split_deployed = (round_split(data["fights"], METHOD_MIN_TRAIN_DATE, "2100-01-01") if PRODUCTION_REFIT
+                      else split_eval)
+    (MODELS_DIR / "round_split.json").write_text(json.dumps(split_deployed, indent=2))
     for kind, m in models.items():
         joblib.dump(m, MODELS_DIR / f"candidate_{kind}.joblib")
 

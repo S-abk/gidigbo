@@ -1,5 +1,5 @@
 {
-  "trained_at_utc": "2026-10-02T20:00:07+00:00",
+  "trained_at_utc": "2026-10-02T21:24:36+00:00",
   "model_type": "logistic_regression",
   "estimator_class": "Pipeline",
   "hyperparameters": {
@@ -209,7 +209,7 @@
     "calibration": "none",
     "refit_on_all_data": true,
     "agreement_with_evaluated_on_test": {
-      "mean_abs_diff": 0.018660440786285214,
+      "mean_abs_diff": 0.018660440786285228,
       "same_favourite_rate": 0.954070981210856
     }
   },

@@ -28,11 +28,17 @@ METHODS = ["KO/TKO", "SUB", "DEC"]
 METHOD_MIN_TRAIN_DATE = "2010-01-01"
 DEFAULT_WEIGHT_LBS = 170.0  # catch / open weight bouts (no listed limit)
 
-WINNER_COLS = ["ko_win_share", "sub_win_share", "dec_win_share", "finish_rate", "slpm", "kd15", "sub15",
-               "td15", "sig_acc", "ctrl_pct", "n_fights", "avg_fight_min", "age"]
-LOSER_COLS = ["fin_loss_rate", "sapm", "sig_def", "td_def", "n_fights", "avg_fight_min", "age",
-              "ko_win_share", "sub_win_share", "slpm", "td15"]
-DIFF_COLS = ["sig_diff_pm", "reach_in", "win_pct"]
+# The same finishing / durability / style profile for BOTH fighters, plus a few differences
+# (incl. the Glicko opponent-strength rating). Chosen over a smaller, asymmetric set by a
+# pre-registered validation test (C tuned inside training for both): -0.0030 log loss,
+# 95% CI [-0.0059, -0.0003]. See README "Method of victory".
+PROFILE_COLS = ["ko_win_share", "sub_win_share", "finish_rate", "kd15", "sub15", "slpm", "td15", "ctrl_pct",
+                "sig_acc", "fin_loss_rate", "sapm", "sig_def", "td_def", "avg_fight_min", "n_fights", "age"]
+WINNER_COLS = PROFILE_COLS
+LOSER_COLS = PROFILE_COLS
+DIFF_COLS = ["glicko_rating", "win_pct", "sig_diff_pm", "reach_in"]
+C_GRID = (0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 1.0)
+C_HOLDOUT_YEARS = 2  # C is chosen on the last 2 training years, fit on the years before them
 CONTEXT_COLS = ["weight_lbs", "is_female", "five_rounds", "is_title"]
 METHOD_FEATURES = ([f"w_{c}" for c in WINNER_COLS] + [f"l_{c}" for c in LOSER_COLS]
                    + [f"wl_{c}_diff" for c in DIFF_COLS] + CONTEXT_COLS)
@@ -89,7 +95,12 @@ def _scores(y: pd.Series, p: np.ndarray) -> dict:
 
 
 def train_method_model(fights, appearances, fighters, log=print) -> tuple[object, dict]:
-    """Chronological split identical to the winner model; C chosen on validation; test scored once."""
+    """Chronological split identical to the winner model; test scored once.
+
+    C is chosen on a holdout INSIDE the training period (its last C_HOLDOUT_YEARS years,
+    fit on the years before), so validation stays an honest estimate. (It used to be
+    chosen on validation, from a grid whose smallest value was larger than the best one.)
+    """
     t = build_method_table(fights, appearances, fighters)
     d = t["event_date"]
     train = t[(d >= METHOD_MIN_TRAIN_DATE) & (d < VALIDATION_START)]
@@ -97,10 +108,15 @@ def train_method_model(fights, appearances, fighters, log=print) -> tuple[object
     test = t[d >= TEST_START]
     log(f"method model rows: train={len(train)} ({METHOD_MIN_TRAIN_DATE}..), validation={len(val)}, test={len(test)}")
 
-    val_scores = {C: _scores(val["method"], predict_method_proba(_fit(train, C), val))["log_loss"] for C in (0.01, 0.1, 1.0)}
-    best_C = min(val_scores, key=val_scores.get)
-    log(f"method model validation log loss by C: {val_scores} -> C={best_C}")
+    cut = pd.Timestamp(VALIDATION_START) - pd.DateOffset(years=C_HOLDOUT_YEARS)
+    inner, holdout = train[train["event_date"] < cut], train[train["event_date"] >= cut]
+    holdout_scores = {C: _scores(holdout["method"], predict_method_proba(_fit(inner, C), holdout))["log_loss"]
+                      for C in C_GRID}
+    best_C = min(holdout_scores, key=holdout_scores.get)
+    log(f"method model in-training holdout ({cut.date()}..) log loss by C: "
+        f"{ {k: round(v, 4) for k, v in holdout_scores.items()} } -> C={best_C}")
     model = _fit(train, best_C)
+    val_scores = {best_C: _scores(val["method"], predict_method_proba(model, val))["log_loss"]}
 
     base_rates = train["method"].value_counts(normalize=True).reindex(METHODS).to_numpy()
     p_test = predict_method_proba(model, test)
@@ -114,7 +130,9 @@ def train_method_model(fights, appearances, fighters, log=print) -> tuple[object
     report = {
         "classes": METHODS, "C": best_C, "min_train_date": METHOD_MIN_TRAIN_DATE,
         "n_train": int(len(train)), "n_validation": int(len(val)), "n_test": int(len(test)),
-        "validation_log_loss_by_C": {str(k): v for k, v in val_scores.items()},
+        "c_selection": f"in-training holdout: last {C_HOLDOUT_YEARS} years before {VALIDATION_START}",
+        "holdout_log_loss_by_C": {str(k): v for k, v in holdout_scores.items()},
+        "validation_log_loss": val_scores[best_C],
         "test": {
             "model": _scores(test["method"], p_test),
             "baseline_overall_rates": _scores(test["method"], p_base),
@@ -129,6 +147,24 @@ def train_method_model(fights, appearances, fighters, log=print) -> tuple[object
     for name, s in report["test"].items():
         log(f"method test {name:28s} log loss={s['log_loss']:.4f} accuracy={s['accuracy']:.3f}")
     return model, report
+
+
+def round_split(fights: pd.DataFrame, start, end) -> dict[str, list[float]]:
+    """P(finish in round r | the fight ends early), separately for 3- and 5-round bouts,
+    from KO/TKO and submission finishes in [start, end), with add-one smoothing.
+
+    Combined with the model's P(decision) this gives round-of-finish odds:
+    P(ends in round r) = (1 - P(decision)) x split[r]. Two research prototypes (a Monte
+    Carlo fight simulator and a competing-risks hazard model) did no better than this.
+    """
+    f = fights[fights["winner_side"].notna() & fights["method"].isin(["KO/TKO", "SUB"])
+               & (fights["event_date"] >= pd.Timestamp(start)) & (fights["event_date"] < pd.Timestamp(end))]
+    out = {}
+    for k in (3, 5):
+        r = f.loc[f["scheduled_rounds"] == k, "end_round"].clip(1, k).astype(int)
+        counts = np.bincount(r - 1, minlength=k)[:k] + 1.0
+        out[str(k)] = (counts / counts.sum()).tolist()
+    return out
 
 
 def refit_method_model_all(fights, appearances, fighters, C: float) -> tuple[object, dict]:

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+import json
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -76,6 +78,8 @@ class Predictor:
         self.model: FightModel = joblib.load(model_path)
         method_path = MODELS_DIR / "method_model.joblib"
         self.method_model = joblib.load(method_path) if method_path.exists() else None
+        split_path = MODELS_DIR / "round_split.json"
+        self.round_split = json.loads(split_path.read_text()) if split_path.exists() else None
         self.fights = pd.read_parquet(data_dir / "fights.parquet")
         self.appearances = pd.read_parquet(data_dir / "appearances.parquet")
         self.fighters = pd.read_parquet(data_dir / "fighters.parquet")
@@ -197,8 +201,16 @@ class Predictor:
             "given_B_wins": dict(zip(METHODS, given_b.tolist())),
             "overall": {m: a[m] + b[m] for m in METHODS},
             "most_likely": {"winner": winner, "method": method, "prob": prob},
+            "rounds": self.round_odds(a["DEC"] + b["DEC"], context["scheduled_rounds"]),
             "context": context,
         }
+
+    def round_odds(self, p_decision: float, scheduled_rounds: int) -> dict | None:
+        """P(goes the distance) and P(ends in round r) = (1 - P(decision)) x historical split."""
+        split = (self.round_split or {}).get(str(int(scheduled_rounds)))
+        if split is None:
+            return None
+        return {"distance": p_decision, "by_round": [(1 - p_decision) * s for s in split]}
 
     def predict_fight(self, fighter_a: str, fighter_b: str, explain: bool = True, weight_class: str | None = None,
                       scheduled_rounds: int = 3, is_title: bool = False) -> dict:
@@ -211,8 +223,10 @@ class Predictor:
         warnings = []
         for p in (pa, pb):
             if p["n_fights"] < LIMITED_HISTORY_THRESHOLD:
-                warnings.append(f"{p['name']} has only {p['n_fights']} prior UFC fight(s): "
-                                "the prediction relies on very limited history.")
+                # Stated as a fact, not a reliability claim: on 2017-23 out-of-sample fights,
+                # predictions involving such fighters were NOT less accurate or worse calibrated.
+                warnings.append(f"{p['name']} has little UFC history ({p['n_fights']} prior fight"
+                                f"{'' if p['n_fights'] == 1 else 's'}), so their stats lean on league averages.")
             if p["age"] is None or p["reach_in"] is None:
                 warnings.append(f"{p['name']} is missing some physical data (age/reach); neutral values were used.")
         return {
