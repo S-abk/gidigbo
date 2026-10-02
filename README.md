@@ -1,5 +1,7 @@
 # UFC Fight Predictor (local MVP)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Estimates **the probability that Fighter A beats Fighter B** for any two UFC fighters. It uses
 historical UFCStats data, leakage-safe pre-fight features, chronologically validated models and a
 local Streamlit UI.
