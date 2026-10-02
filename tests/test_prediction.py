@@ -155,3 +155,18 @@ def test_round_odds_form_a_distribution(predictor):
         assert len(r["by_round"]) == rounds
         assert r["distance"] == pytest.approx(m["overall"]["DEC"])  # distance = P(decision)
         assert sum(r["by_round"]) + r["distance"] == pytest.approx(1.0)
+
+
+def test_mismatched_model_artifacts_fail_fast(predictor):
+    """Code and saved models out of sync (e.g. a deploy swapping files at different moments)
+    must raise a clear ModelCodeMismatch, not a cryptic sklearn feature-name error later."""
+    from types import SimpleNamespace
+    from src.predict import ModelCodeMismatch
+    real = predictor.method_model
+    try:
+        predictor.method_model = SimpleNamespace(feature_names_in_=["w_dec_win_share", "l_old_feature"])
+        with pytest.raises(ModelCodeMismatch):
+            predictor._check_artifacts_match_code()
+    finally:
+        predictor.method_model = real
+    predictor._check_artifacts_match_code()  # the real artifacts match the code

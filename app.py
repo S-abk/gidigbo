@@ -4,6 +4,7 @@ Run:  streamlit run app.py
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -55,8 +56,10 @@ def prepare_data(commit: str | None) -> str | None:
 
 
 @st.cache_resource(show_spinner="Loading model and fighter histories…")
-def load_predictor(data_commit: str | None, model_mtime: float):
-    # Keyed on the data commit and model file so a redeploy with a new model reloads it.
+def load_predictor(data_commit: str | None, artifacts: str):
+    # Keyed on the data commit and the CONTENT of every model artifact (see artifacts_key), so
+    # a redeploy that changes any model file reloads it. A key on one file's mtime once let a
+    # live deploy serve new code with a stale cached method model.
     from src.predict import Predictor
     return Predictor()
 
@@ -86,8 +89,33 @@ except Exception as exc:  # network down on first start, upstream moved, ...
     st.error(f"Could not prepare the fight data: {exc}. Check the network connection and reload, or "
              "run `python -m src.fetch_data` then `python -m src.build_dataset` locally.")
     st.stop()
-MODEL_KEY = (data_commit, (MODELS_DIR / "model.joblib").stat().st_mtime)
-predictor = load_predictor(*MODEL_KEY)
+ARTIFACTS = ("model.joblib", "method_model.joblib", "round_split.json", "model_metadata.json")
+
+
+def artifacts_key() -> str:
+    h = hashlib.sha256()
+    for name in ARTIFACTS:
+        path = MODELS_DIR / name
+        h.update(name.encode() + (path.read_bytes() if path.exists() else b"missing"))
+    return h.hexdigest()[:16]
+
+
+MODEL_KEY = (data_commit, artifacts_key())
+try:
+    predictor = load_predictor(*MODEL_KEY)
+except Exception as exc:
+    from src.predict import ModelCodeMismatch
+    if not isinstance(exc, ModelCodeMismatch):
+        raise
+    # Possibly caught mid-update (code and model files swapped at different moments):
+    # drop the cached objects and reload once from what is on disk now.
+    load_predictor.clear()
+    MODEL_KEY = (data_commit, artifacts_key())
+    try:
+        predictor = load_predictor(*MODEL_KEY)
+    except ModelCodeMismatch as exc2:
+        st.error(str(exc2))
+        st.stop()
 roster = predictor.roster
 
 
@@ -142,10 +170,10 @@ ACTIVE_DAYS = 730  # "active" = fought within the last two years of data
 
 
 @st.cache_resource(show_spinner=False)
-def fighter_index(data_commit: str | None, model_mtime: float) -> pd.DataFrame:
+def fighter_index(data_commit: str | None, artifacts: str) -> pd.DataFrame:
     """Roster plus gender, divisions, record and activity, for filtering and labels.
     Same cache key as load_predictor, so a redeploy with new data rebuilds it too."""
-    p = load_predictor(data_commit, model_mtime)
+    p = load_predictor(data_commit, artifacts)
     app = p.appearances.sort_values("event_date")
     app = app.assign(female=app["weight_class"].str.startswith("Women's"),
                      division=app["weight_class"].str.removeprefix("Women's "))

@@ -73,11 +73,16 @@ def build_roster(appearances: pd.DataFrame, fighters: pd.DataFrame, profiles: pd
     return r.reset_index().sort_values(["display_name"]).reset_index(drop=True)
 
 
+class ModelCodeMismatch(RuntimeError):
+    """Saved model artifacts and the feature code are out of sync."""
+
+
 class Predictor:
     def __init__(self, model_path=MODELS_DIR / "model.joblib", data_dir=PROCESSED_DIR):
         self.model: FightModel = joblib.load(model_path)
         method_path = MODELS_DIR / "method_model.joblib"
         self.method_model = joblib.load(method_path) if method_path.exists() else None
+        self._check_artifacts_match_code()
         split_path = MODELS_DIR / "round_split.json"
         self.round_split = json.loads(split_path.read_text()) if split_path.exists() else None
         self.fights = pd.read_parquet(data_dir / "fights.parquet")
@@ -88,6 +93,21 @@ class Predictor:
         ids = self.fighters["fighter_id"].tolist()
         self.profiles = fighter_profiles_as_of(self.appearances, self.fighters, ids, self.as_of)
         self.roster = self._build_roster()
+
+    def _check_artifacts_match_code(self) -> None:
+        """Fail fast, with a clear message, if the saved models expect different inputs than the
+        current code produces (e.g. code updated but models not retrained, or a deploy that
+        swapped code and model files at different moments)."""
+        from src.method_model import METHOD_FEATURES
+        checks = [("win model", getattr(self.model.estimator, "feature_names_in_", None), MODEL_FEATURES)]
+        if self.method_model is not None:
+            checks.append(("method model", getattr(self.method_model, "feature_names_in_", None), METHOD_FEATURES))
+        for name, saved, current in checks:
+            if saved is not None and list(saved) != list(current):
+                raise ModelCodeMismatch(
+                    f"The saved {name} expects different inputs than the current code produces "
+                    f"(e.g. saved {list(saved)[:2]}... vs code {list(current)[:2]}...). "
+                    "Retrain with `python -m src.train` so models/ matches src/.")
 
     # ------------------------------------------------------------------ lookup
     def _build_roster(self) -> pd.DataFrame:
