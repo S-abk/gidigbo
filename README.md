@@ -1,19 +1,24 @@
-# UFC Fight Predictor (local MVP)
+# UFC Fight Predictor
 
+[![Live app](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gidigbo.streamlit.app)
 [![Build](https://github.com/S-abk/gidigbo/actions/workflows/build.yml/badge.svg)](https://github.com/S-abk/gidigbo/actions/workflows/build.yml)
 [![Tests](https://github.com/S-abk/gidigbo/actions/workflows/tests.yml/badge.svg)](https://github.com/S-abk/gidigbo/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Estimates **the probability that Fighter A beats Fighter B** for any two UFC fighters. It uses
-historical UFCStats data, leakage-safe pre-fight features, chronologically validated models and a
-local Streamlit UI.
+Estimates **the probability that Fighter A beats Fighter B** for any two UFC fighters, and how
+and when the fight is likely to end. It uses historical UFCStats data, leakage-safe pre-fight
+features, chronologically validated models and a Streamlit app.
+
+**Live app: [gidigbo.streamlit.app](https://gidigbo.streamlit.app).** A weekly workflow
+retrains the model on new fight data and redeploys it automatically. Everything also runs
+locally; see the Quick start below.
 
 > These probabilities are statistical model estimates, not guarantees. This project gives no
 > betting advice.
 
 ---
 
-## Quick start
+## Quick start (run locally)
 
 Requires Python 3.12, the version CI tests and the pinned dependencies were resolved for. Run all
 commands from the repository root.
@@ -626,9 +631,25 @@ Prototypes live outside the repository.
 - **SHAP** local explanations for tree models, and per-feature uncertainty or prediction intervals.
 - **Round prediction**, and a round-aware method model.
 
+## Acknowledgements
+
+- **Data.** Fight statistics come from [UFCStats](http://ufcstats.com), via the CSVs scraped and
+  maintained in [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats).
+  Scheduled fight cards come from Wikipedia.
+- **Development.** Much of this project was built with [Claude](https://www.anthropic.com/claude),
+  Anthropic's AI model, working through Claude Code. That includes:
+  - the data pipeline and fighter-identity resolution
+  - the leakage-safe features and their tests
+  - model training, evaluation and the Glicko rating
+  - the Streamlit app
+  - the CI, deployment and weekly refresh workflows
+  - the research prototypes behind the October 2026 changes
+
+  The repository owner set the direction and requirements and made the final calls.
+
 ## License
 
 This project's code is MIT licensed (see `LICENSE`). The data source,
 [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats), is separately
-licensed under GPL-3.0; it is cloned by the user into `data/raw/` (see Quick start) and is not
-redistributed as part of this repository.
+licensed under GPL-3.0. Its CSVs are downloaded into `data/raw/` at run time (or cloned there by the
+user) and are not redistributed as part of this repository.
