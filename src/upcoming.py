@@ -64,21 +64,41 @@ def _plain(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def fetch_scheduled_events(today: date | None = None) -> pd.DataFrame:
-    """Scheduled UFC events (today or later), soonest first: columns event, page, date."""
-    today = today or date.today()
-    wt = _wikitext("List_of_UFC_events", _section_index("List_of_UFC_events", "Scheduled events"))
-    rows = []
-    for row in wt.split("|-")[1:]:
+class ParseFailure(RuntimeError):
+    """Raised when a Wikipedia page looks like it has the expected content, but our
+    regex-based wikitext parser extracted nothing from it -- almost always a sign that
+    the page's template markup changed, not that there is genuinely nothing there. We'd
+    rather fail loudly here than have the app silently show "no events"/"no bouts"."""
+
+
+def parse_scheduled_events(wikitext: str, today: date) -> pd.DataFrame:
+    """Scheduled UFC events on or after `today`, soonest first: columns event, page, date."""
+    all_rows, future_rows = [], []
+    for row in wikitext.split("|-")[1:]:
         link = re.search(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", row)
         d = re.search(r"\{\{dts\|(\d{4})\|(\w{3})\w*\|(\d{1,2})", row)
         if not (link and d) or d.group(2) not in MONTHS:
             continue
         when = date(int(d.group(1)), MONTHS[d.group(2)], int(d.group(3)))
+        all_rows.append(when)
         if when >= today:
-            rows.append({"event": (link.group(2) or link.group(1)).strip(), "page": link.group(1).strip(),
-                         "date": when})
-    return pd.DataFrame(rows, columns=["event", "page", "date"]).sort_values("date").reset_index(drop=True)
+            future_rows.append({"event": (link.group(2) or link.group(1)).strip(),
+                                "page": link.group(1).strip(), "date": when})
+    # "{{dts|" templates are present (the section has rows) but none parsed as a valid
+    # (link, date) pair: a parsing break, not "no events" -- distinct from the ordinary
+    # case where every parsed row is simply in the past relative to `today`.
+    if not all_rows and "{{dts|" in wikitext:
+        raise ParseFailure(
+            "Found date templates in Wikipedia's 'Scheduled events' table but could not parse any "
+            "event out of them. The page format likely changed; src/upcoming.py needs an update."
+        )
+    return pd.DataFrame(future_rows, columns=["event", "page", "date"]).sort_values("date").reset_index(drop=True)
+
+
+def fetch_scheduled_events(today: date | None = None) -> pd.DataFrame:
+    """Scheduled UFC events (today or later), soonest first: columns event, page, date."""
+    wt = _wikitext("List_of_UFC_events", _section_index("List_of_UFC_events", "Scheduled events"))
+    return parse_scheduled_events(wt, today or date.today())
 
 
 def parse_fight_card(wikitext: str) -> pd.DataFrame:
@@ -96,6 +116,14 @@ def parse_fight_card(wikitext: str) -> pd.DataFrame:
         if f1 and f2:
             rows.append({"segment": segment, "weight_class": weight_class, "fighter_1": f1, "fighter_2": f2,
                          "notes": _plain(fields[7])})
+    # A page with {{MMAevent bout ...}} templates that none of them parsed into a
+    # fighter_1/fighter_2 pair means our field-order assumptions broke, not that the
+    # event genuinely has zero bouts.
+    if not rows and "{{MMAevent bout" in wikitext:
+        raise ParseFailure(
+            "Found '{{MMAevent bout' templates on this page but parsed zero bouts from them. The "
+            "template's field layout likely changed; src/upcoming.py needs an update."
+        )
     return pd.DataFrame(rows, columns=["segment", "weight_class", "fighter_1", "fighter_2", "notes"])
 
 

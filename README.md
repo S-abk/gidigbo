@@ -75,6 +75,7 @@ ufc_predictor/
 │   ├── train.py              split, walk-forward CV, calibration, selection, test evaluation
 │   ├── evaluate.py           metrics and diagnostics
 │   ├── predict.py            Predictor / predict_fight(), explanations
+│   ├── ratings.py            leakage-safe Glicko-1 opponent-strength ratings
 │   └── upcoming.py           scheduled events + fight cards from Wikipedia (on demand)
 └── tests/
     ├── test_features.py
@@ -158,6 +159,7 @@ training and for the app.
 
 | Group | Features |
 |-------|----------|
+| Opponent-strength rating | Glicko-1 rating and rating deviation (RD), see below |
 | Experience | prior UFC fights, shrunk win % |
 | Recent form | wins in last 3 and last 5, last-5 win %, current streak (draw/NC resets it) |
 | Physical | age on fight date, height, reach, southpaw/switch flags |
@@ -165,6 +167,16 @@ training and for the app.
 | Striking | sig. strikes landed and absorbed per minute, differential (career, last 3, last 5), accuracy, defence, knockdowns per 15 min |
 | Grappling | takedowns per 15 min (career, last 5), takedown accuracy, takedown defence, control-time share, submission attempts per 15 min |
 | Fight history | finish rate, KO/sub/decision share of wins, rate of being finished, average fight length |
+
+**Opponent-strength rating (`src/ratings.py`).** The other features describe what a fighter did,
+never *who they did it against*. A Glicko-1 rating pools results across the whole UFC network, so
+beating strong opposition counts for more. Its rating deviation (RD) is an explicit uncertainty: it
+starts at 350 for debutants and grows during layoffs. Each event date is one rating period:
+everyone on the card is snapshotted *before* that card's results are applied, so the same leakage
+rules hold (strictly earlier dates only; same-night bouts can't see each other). Wins score 1,
+losses 0, draws 0.5; no contests are not applied. The app shows the rating as *rating ± 95% range*
+(± 1.96·RD). See [Glicko rating: backtest](#glicko-rating-backtest) for how it was tuned and
+whether it earned its place.
 
 **Matchup representation.** For each profile feature *f*, the model sees `f_diff = A − B`, so it
 learns *differences*. The one extra symmetric context feature is `min_prior_fights`, the smaller of
@@ -200,7 +212,8 @@ before this fight?*
    (current division) is used only to tell same-named fighters apart, never as a feature.
 4. **No post-fight information.** There are no rankings, final records or career averages: every
    number is "as of the day before".
-5. **Tests** (`tests/test_leakage.py`):
+5. **Tests** (`tests/test_leakage.py`). They check every profile feature, including the Glicko
+   rating, and [CI](.github/workflows/tests.yml) runs them on every push and pull request:
    - *Perturbation test:* randomise every outcome and stat on or after a date *d*, rebuild the
      features, and assert that features for fights on *d* are unchanged.
    - *Truncation test:* features built from data before *d* must equal those built from the full
@@ -226,7 +239,7 @@ In the raw data the winner is listed first **64% of the time** (5,617 W/L vs 3,1
   `P(A) = ½·[p(A,B) + 1 − p(B,A)]` after calibration. That makes `P(A beats B) = 1 − P(B beats A)`
   exactly.
 - **Measured gap.** Before symmetrisation, the mean |p(A,B) − (1 − p(B,A))| on the test set is ~0
-  for logistic regression (it is exactly antisymmetric), 0.012 for random forest and 0.012 for
+  for logistic regression (it is exactly antisymmetric), 0.014 for random forest and 0.013 for
   XGBoost.
 
 ---
@@ -247,16 +260,17 @@ The 261 fights before 2001 are used only as fighter history.
 1. **Walk-forward CV** inside the training period: test on each of 2017–2021, training on all prior
    years. This picks hyperparameters from small grids.
 2. **Refit.** Each model family is refit on the full training period.
-3. **Calibration** (none / Platt-sigmoid / isotonic) is chosen per model on the validation period by
-   2-fold chronological cross-fitting, then fit on all of validation. The test set is never used for
-   calibration.
+3. **Calibration** (none or Platt-sigmoid) is chosen per model on the validation period by 2-fold
+   chronological cross-fitting, then fit on all of validation. The test set is never used for
+   calibration. Isotonic calibration is deliberately not a candidate; see
+   [Glicko rating: backtest](#glicko-rating-backtest).
 4. **Production model** = lowest cross-fitted validation log loss. If another model beats logistic
    regression by less than 0.002, the interpretable logistic regression wins.
 5. **The test set is scored once,** after selection.
 
 Selected: **logistic regression** (C = 0.01, no extra calibration: cross-fitting found the raw
 logistic regression already as well calibrated as Platt scaling). Its cross-fitted validation log loss
-was 0.6560, versus 0.6565 for XGBoost and 0.6626 for random forest. The shipped `model.joblib` is
+was 0.6473, versus 0.6495 for XGBoost and 0.6569 for random forest. The shipped `model.joblib` is
 exactly the evaluated artifact: trained on the training period and calibrated on validation. At
 prediction time it uses fighter histories through the latest fight in the data.
 
@@ -267,24 +281,73 @@ prediction time it uses fighter histories through the latest fight in the data.
 | Always 50% | 0.475* | 0.6931 | 0.2500 | 0.500 |
 | Win-% difference (logistic) | 0.6075 | 0.6686 | 0.2379 | 0.640 |
 | Experience + record (logistic) | 0.6089 | 0.6702 | 0.2387 | 0.636 |
-| **Logistic regression (selected)** | **0.6312** | **0.6365** | **0.2228** | **0.692** |
-| Random forest | 0.6221 | 0.6488 | 0.2286 | 0.670 |
-| XGBoost | 0.6186 | 0.6440 | 0.2265 | 0.675 |
+| **Logistic regression (selected)** | **0.6541** | **0.6282** | **0.2188** | **0.707** |
+| Random forest | 0.6305 | 0.6390 | 0.2239 | 0.688 |
+| XGBoost | 0.6333 | 0.6322 | 0.2209 | 0.697 |
 
 \* A constant 0.5 counts as "A wins", so its accuracy is just the test label rate.
 
 **Interpretation.**
-- The full model improves log loss by about 0.032 over the best naive baseline and gains about 2.2
+- The full model improves log loss by about 0.040 over the best naive baseline and gains about 4.5
   points of accuracy.
-- That is modest but real: MMA is noisy, and ~63% accuracy with ~0.64 log loss is plausible for
+- That is modest but real: MMA is noisy, and ~65% accuracy with ~0.63 log loss is plausible for
   public-stats models.
 - Tree models did not beat the linear model out of sample.
-- In validation permutation importance, the most influential feature group was **age**, followed by
-  striking defence / damage absorbed, wrestling offence, finishing / durability and striking
+- In validation permutation importance, the most influential feature group is the **opponent-strength
+  rating**, then **age**, then striking defence / damage absorbed, wrestling offence and striking
   differential.
 
 Calibration curves, confusion matrices and probability histograms are in `models/evaluation.json`
 and on the **Model Performance** tab.
+
+---
+
+## Glicko rating: backtest
+
+The opponent-strength rating came out of a robustness review. It was added only after it beat the
+existing model on held-out data. **Decision rule, fixed before any run:** keep it only if the
+production model's cross-fitted *validation* log loss improves on the pre-Glicko 0.6560 and
+walk-forward CV doesn't get worse. Test results play no part.
+
+**Tuning** used logistic-regression walk-forward CV on 2017–2021, the training period only. The
+tuned constant is how long a layoff takes to reset a fighter's rating uncertainty to a debutant's:
+
+| Setting | Walk-forward CV log loss |
+|---|---:|
+| No Glicko (baseline) | 0.6612 |
+| 2-year reset | 0.6570 |
+| **5-year reset (chosen)** | **0.6545** |
+| 10-year reset | 0.6545 |
+| No layoff growth | 0.6563 |
+
+A 2-year reset kept almost every pre-fight RD near the 350 maximum, because one fight is little
+information against a long layoff.
+
+**Validation** (the decision): the production model went from 0.6560 to **0.6473**. Every family
+improved: XGBoost 0.6565 → 0.6495, random forest 0.6626 → 0.6569. So it was kept.
+
+**Test**, 1,437 fights, logistic regression:
+
+| | Accuracy | Log loss | Brier | ROC-AUC |
+|---|---:|---:|---:|---:|
+| Before Glicko | 63.1% | 0.6365 | 0.2228 | 0.692 |
+| **With Glicko** | **65.4%** | **0.6282** | **0.2188** | **0.707** |
+
+**Disclosure: isotonic calibration removed after the test set was viewed.** In the first run with
+Glicko, cross-fitting picked isotonic calibration over "none" by 0.0011, which is within noise. That
+run scored a *worse* test log loss (0.6375). On investigation, isotonic regression is a step
+function:
+- It gave only 38 distinct probabilities across 1,437 test fights.
+- It claimed over 95% confidence on fights it got right only ~82% of the time.
+- Independent of any labels, it left ~54% of the app's occlusion-based model factors at exactly
+  zero impact, because small changes don't move a plateau.
+
+Isotonic is now excluded from the calibration candidates. The app's explanations need a smooth,
+strictly increasing mapping, and isotonic is known to overfit small calibration sets (~500 fights
+per cross-fit half here). `tests/test_prediction.py::test_explanations_are_not_degenerate` guards
+against a step-function calibrator returning. Because this was noticed *after* viewing the test
+set, treat the final test log loss as slightly optimistic. The validation figures above are the
+clean estimate.
 
 ---
 
@@ -328,8 +391,8 @@ Full six-way outcome test log loss:
 
 | Approach | Log loss |
 |---|---:|
-| **Win model × method model** | **1.562** |
-| Win model × average method rates | 1.653 |
+| **Win model × method model** | **1.553** |
+| Win model × average method rates | 1.645 |
 | Uniform guess | 1.792 |
 
 ## Upcoming cards
@@ -346,13 +409,19 @@ in its data, and its website now blocks scripted access with a JavaScript browse
 - **Debutants.** Fighters not in the data are scored as debutants with neutral, league-average
   profiles and are flagged in the table.
 - **Full breakdown.** *Open in Predict tab* sends a bout to the Predict tab, with factors and comparison.
+- **Fails loudly on format changes.** The parsers are regex-based, so a Wikipedia template change
+  could otherwise look exactly like "no events" or "no bouts announced yet". If a page contains
+  `{{dts|` or `{{MMAevent bout` templates but nothing parses, `src/upcoming.py` raises
+  `ParseFailure` and the app shows an error saying the format likely changed. Genuinely empty
+  results, such as every event being in the past, still return empty.
 - **Accuracy.** Cards change late, and Wikipedia can lag or be edited, so check official sources.
 
 ## Explanations
 
 - **Model factors.** The app shows *model factors*, not causes. For each feature group it measures how
   much P(A) changes when that group's differences are set to 0 (group occlusion through the same
-  symmetric prediction rule).
+  symmetric prediction rule). This only works with a smooth calibrator, which is why isotonic
+  calibration is excluded.
 - **Global importance.**
   - Standardised logistic-regression coefficients
   - Tree importances for candidate models
@@ -368,15 +437,19 @@ in its data, and its website now blocks scripted access with a JavaScript browse
 - **Snapshot attributes.** Height, reach and DOB come from a current snapshot. DOB is missing for some
   fighters (a neutral age of 30 is used), and reach is missing for many older fighters.
 - **Name-based identity.** The fight files have no fighter IDs. Aliases and duplicate-name
-  resolution are heuristic, and a few fighters only have synthetic IDs without physical data.
+  resolution are heuristic, and a few fighters only have synthetic IDs without physical data. Two
+  different fighters can share a name (there are two "Bruno Silva"s), so the app keys everything on
+  a `display_name` that is guaranteed unique, never on the raw name.
 - **Sparse early stats.** Early events (1990s) lack control time and some stats. Those fights are
   history only.
-- **Missing context.** There are no opponent-strength adjustments, so beating weak opposition counts
-  like beating strong opposition. There is no injury, camp, weight-cut or short-notice information.
-- **Hypothetical matchups ignore weight class, title status and 5-round scheduling.** The model does
-  not use these.
+- **Missing context.** Opponent strength enters only through the Glicko rating. The per-minute
+  stats are not opponent-adjusted, so landing 5 strikes a minute on a weak opponent counts the same
+  as on a strong one. There is no injury, camp, weight-cut or short-notice information.
+- **The win model ignores weight class, title status and 5-round scheduling.** Only the
+  method-of-victory model uses them.
 - **Model age.** The shipped model's weights end in 2021 (train) and 2023 (calibration). Fighter
-  profiles are current, but model weights do not include 2024+ fights.
+  profiles are current, but model weights do not include 2024+ fights. See
+  [Model staleness](#model-staleness).
 
 ## Retraining / refreshing data
 
@@ -388,9 +461,35 @@ python -m src.train                       # rebuild dataset, retrain, re-evaluat
 Split dates live in `src/config.py` (`VALIDATION_START`, `TEST_START`, `WALK_FORWARD_YEARS`). Move
 them forward as data accumulates.
 
+### Model staleness
+
+Model weights age even though fighter profiles advance with every rebuild. Concept drift is treated
+as an ongoing decision, not something settled at training time. `src/config.py` sets two simple
+guidelines, which are recorded in `models/model_metadata.json`:
+
+- `RECALIBRATE_AFTER_DAYS = 180`
+- `RETRAIN_AFTER_DAYS = 365`
+
+The **Model Performance** tab shows the model's age. Age is measured from the last fight the weights
+and calibrator were fit on, which is the end of the validation period. It is *not* measured from
+when `train.py` last ran: retraining with unchanged split dates refits on the same data and makes
+nothing fresher. The age shows as a warning past the recalibration guideline and as an error past
+the retrain guideline.
+
+To refresh the model, move `VALIDATION_START` and `TEST_START` forward and retrain. With the
+current split (validation ends 2023-12-16) the tab shows the red retrain state. That is the honest
+cost of shipping exactly the evaluated artifact while holding out 2024+ as the test set.
+
+These are cheap stand-ins for a formal retain / recalibrate / refit rule, not an optimal
+schedule.
+
 ## Recommendations for the next version
 
-- **Opponent strength:** Elo/Glicko ratings computed sequentially, and opponent-adjusted stats.
+- **Clean re-evaluation:** once enough post-2026 fights exist, score the current pipeline on a new
+  test period that no design decision has touched. The current test set has been viewed (see the
+  Glicko backtest disclosure).
+- **Opponent-adjusted stats**, such as strikes landed relative to what each opponent usually absorbs,
+  and the Glicko rating as an input to the method-of-victory model.
 - **Production refit:** after evaluation, refit the chosen configuration on all data (with
   time-respecting calibration) for the production model.
 - **Bout context in the UI:** weight class, 5-round and title flags as inputs, plus interactions

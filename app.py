@@ -5,6 +5,7 @@ Run:  streamlit run app.py
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -87,6 +88,12 @@ def fmt_pct(x) -> str:
 
 def fmt_num(x, digits=2) -> str:
     return "—" if x is None or pd.isna(x) else f"{x:.{digits}f}"
+
+
+def fmt_glicko(feat: dict) -> str:
+    """Glicko rating with its 95% range (rating ± 1.96 x RD); the range is wide for
+    debutants and grows during layoffs."""
+    return f"{feat['glicko_rating']:.0f} ± {1.96 * feat['glicko_rd']:.0f}"
 
 
 def record(p: dict) -> str:
@@ -372,15 +379,18 @@ with tab_predict:
         tape = pd.DataFrame({
             "": ["Age", "Height", "Reach", "Stance", "UFC record", "Prior UFC fights",
                  "Wins in last 5", "Sig. strikes landed / min", "Sig. strikes absorbed / min",
-                 "Takedowns / 15 min", "Takedown defence", "Days since last fight"],
-            pa["name"]: [fmt_num(pa["age"], 1) if pa["age"] else "unknown", fmt_height(pa["height_in"]),
+                 "Takedowns / 15 min", "Takedown defence", "Days since last fight",
+                 "Opponent-strength rating (Glicko)"],
+            pa["display_name"]: [fmt_num(pa["age"], 1) if pa["age"] else "unknown", fmt_height(pa["height_in"]),
                          fmt_inches(pa["reach_in"]), pa["stance"], record(pa), pa["n_fights"],
                          int(fa_["wins_last5"]), fmt_num(fa_["slpm"]), fmt_num(fa_["sapm"]),
-                         fmt_num(fa_["td15"]), fmt_pct(fa_["td_def"]), pa["days_since_last"] or "—"],
-            pb["name"]: [fmt_num(pb["age"], 1) if pb["age"] else "unknown", fmt_height(pb["height_in"]),
+                         fmt_num(fa_["td15"]), fmt_pct(fa_["td_def"]), pa["days_since_last"] or "—",
+                         fmt_glicko(fa_)],
+            pb["display_name"]: [fmt_num(pb["age"], 1) if pb["age"] else "unknown", fmt_height(pb["height_in"]),
                          fmt_inches(pb["reach_in"]), pb["stance"], record(pb), pb["n_fights"],
                          int(fb_["wins_last5"]), fmt_num(fb_["slpm"]), fmt_num(fb_["sapm"]),
-                         fmt_num(fb_["td15"]), fmt_pct(fb_["td_def"]), pb["days_since_last"] or "—"],
+                         fmt_num(fb_["td15"]), fmt_pct(fb_["td_def"]), pb["days_since_last"] or "—",
+                         fmt_glicko(fb_)],
         }).astype(str)
         st.dataframe(tape, hide_index=True, width="stretch", height=35 * len(tape) + 38)
 
@@ -533,6 +543,7 @@ with tab_compare:
         ("Record", "Wins in last 5", int(fa_["wins_last5"]), int(fb_["wins_last5"])),
         ("Record", "Recent win rate (last 5, shrunk)", fmt_pct(fa_["win_pct_last5"]), fmt_pct(fb_["win_pct_last5"])),
         ("Record", "Current streak", f"{fa_['streak']:+.0f}", f"{fb_['streak']:+.0f}"),
+        ("Record", "Opponent-strength rating (Glicko, ± 95% range)", fmt_glicko(fa_), fmt_glicko(fb_)),
         ("Striking", "Sig. strikes landed / min", fmt_num(fa_["slpm"]), fmt_num(fb_["slpm"])),
         ("Striking", "Sig. strikes absorbed / min", fmt_num(fa_["sapm"]), fmt_num(fb_["sapm"])),
         ("Striking", "Sig. strike differential / min", fmt_num(fa_["sig_diff_pm"]), fmt_num(fb_["sig_diff_pm"])),
@@ -545,7 +556,9 @@ with tab_compare:
         ("Grappling", "Control time share", fmt_pct(fa_["ctrl_pct"]), fmt_pct(fb_["ctrl_pct"])),
         ("Activity", "Days since last fight", pa["days_since_last"] or "—", pb["days_since_last"] or "—"),
     ]
-    comp = pd.DataFrame(rows, columns=["Category", "Statistic", pa["name"], pb["name"]]).astype(str)
+    # Column keys must be unique even when two different fighters share a real name
+    # (e.g. two "Bruno Silva"s) -- display_name is disambiguated, name is not.
+    comp = pd.DataFrame(rows, columns=["Category", "Statistic", pa["display_name"], pb["display_name"]]).astype(str)
     st.dataframe(comp, hide_index=True, width="stretch", height=35 * len(comp) + 38)
 
     chart_stats = [("Strikes landed/min", "slpm"), ("Strikes absorbed/min", "sapm"),
@@ -584,6 +597,29 @@ with tab_perf:
                 f"**Trained:** {metadata['trained_at_utc'][:10]}")
     st.caption(evaluation["selection_rule"].capitalize() + ". The test period was used only once, "
                "after the model had been chosen.")
+
+    policy = metadata.get("staleness_policy")
+    if policy:
+        # Age = time since the last fight the weights/calibrator were fit on (end of the
+        # validation period), NOT since train.py last ran: retraining with unchanged split
+        # dates refits on the same data and makes nothing fresher.
+        fit_end = periods["validation"]["end"]
+        age_days = (datetime.now(timezone.utc).date() - datetime.fromisoformat(fit_end).date()).days
+        profiles_through = result["as_of"] if result else metadata["data_source"]["latest_fight_date"]
+        refresh = ("To refresh it, move `VALIDATION_START` and `TEST_START` forward in `src/config.py`, "
+                   "then run `python -m src.train`; retraining with unchanged split dates refits on the same data.")
+        if age_days >= policy["retrain_after_days"]:
+            st.error(f"The model learned from fights up to {fit_end} ({age_days} days ago), past the "
+                     f"{policy['retrain_after_days']}-day retrain guideline. Fighter profiles are current "
+                     f"(through {profiles_through}), but the model's weights haven't learned from any fight "
+                     f"since {fit_end}. {refresh}")
+        elif age_days >= policy["recalibrate_after_days"]:
+            st.warning(f"The model learned from fights up to {fit_end} ({age_days} days ago), past the "
+                       f"{policy['recalibrate_after_days']}-day recalibration guideline (retrain guideline: "
+                       f"{policy['retrain_after_days']} days). {refresh}")
+        else:
+            st.caption(f"The model learned from fights up to {fit_end} ({age_days} days ago), within the "
+                       f"{policy['recalibrate_after_days']}-day recalibration guideline.")
 
     pcols = st.columns(3)
     for col, key, label in zip(pcols, ["train", "validation", "test"], ["Training", "Validation", "Test"]):

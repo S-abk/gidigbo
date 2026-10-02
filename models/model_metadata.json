@@ -1,5 +1,5 @@
 {
-  "trained_at_utc": "2026-10-02T04:45:08+00:00",
+  "trained_at_utc": "2026-10-02T07:28:07+00:00",
   "model_type": "logistic_regression",
   "estimator_class": "Pipeline",
   "hyperparameters": {
@@ -8,6 +8,8 @@
   "calibration_method": "none",
   "prediction_rule": "symmetrised: P(A) = 0.5 * (p(A,B) + 1 - p(B,A)), after calibration",
   "feature_names": [
+    "glicko_rating_diff",
+    "glicko_rd_diff",
     "n_fights_diff",
     "win_pct_diff",
     "wins_last3_diff",
@@ -48,6 +50,8 @@
     "min_prior_fights"
   ],
   "diff_features": [
+    "glicko_rating_diff",
+    "glicko_rd_diff",
     "n_fights_diff",
     "win_pct_diff",
     "wins_last3_diff",
@@ -90,6 +94,10 @@
     "min_prior_fights"
   ],
   "feature_groups": {
+    "opponent-strength rating": [
+      "glicko_rating",
+      "glicko_rd"
+    ],
     "UFC experience": [
       "n_fights",
       "win_pct"
@@ -187,9 +195,15 @@
   "test_metrics": {
     "model": "logistic_regression",
     "n": 1437,
-    "accuracy": 0.6311760612386917,
-    "log_loss": 0.636541970639657,
-    "brier": 0.22280963327784703,
-    "roc_auc": 0.6917736930611167
+    "accuracy": 0.6541405706332637,
+    "log_loss": 0.6281791598556608,
+    "brier": 0.21876637218266043,
+    "roc_auc": 0.7069276207712114
+  },
+  "staleness_policy": {
+    "recalibrate_after_days": 180,
+    "retrain_after_days": 365,
+    "measured_from": "periods.validation.end (last fight the weights/calibrator were fit on)",
+    "note": "Cheap proxies for an ongoing retain/recalibrate/refit decision (model weights age even though fighter profiles keep advancing with every rebuild). Not a formal utility-optimal schedule -- see README 'Model staleness'."
   }
 }

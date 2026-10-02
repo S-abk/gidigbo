@@ -25,8 +25,8 @@ from sklearn.linear_model import LogisticRegression
 
 from src import evaluate as ev
 from src.build_dataset import build_all
-from src.config import (MIN_TRAIN_DATE, MODELS_DIR, RANDOM_SEED, RAW_DIR, TEST_START,
-                        VALIDATION_START, WALK_FORWARD_YEARS)
+from src.config import (MIN_TRAIN_DATE, MODELS_DIR, RANDOM_SEED, RAW_DIR, RECALIBRATE_AFTER_DAYS,
+                        RETRAIN_AFTER_DAYS, TEST_START, VALIDATION_START, WALK_FORWARD_YEARS)
 from src.features import (CONTEXT_FEATURES, DIFF_FEATURES, FEATURE_GROUPS, MODEL_FEATURES,
                           build_training_table, mirror)
 from src.method_model import (METHODS, build_method_table, predict_method_proba,
@@ -82,12 +82,23 @@ def mirrored_raw(model: FightModel, df: pd.DataFrame) -> tuple[np.ndarray, np.nd
     return model.raw_proba(X), y
 
 
+# Isotonic regression is deliberately NOT a candidate. It is a step function: it gave
+# only ~38 distinct probabilities over 1,437 test fights, claimed >95% confidence on
+# fights it got right only ~82% of the time, and -- independent of any labels -- left
+# ~54% of the app's occlusion-based "model factors" at exactly zero impact, because
+# small input changes don't move a plateau. It is also known to overfit small
+# calibration sets (~500 fights per cross-fit half here). Calibrators must be smooth
+# and strictly increasing for the explanations to work. (Decided after the test set
+# had been viewed once; see README "Glicko rating: backtest".)
+CALIBRATION_CANDIDATES = ("none", "sigmoid")
+
+
 def choose_calibration(model: FightModel, val: pd.DataFrame) -> tuple[str, dict]:
     """2-fold chronological cross-fitting on validation: fit on one half, score the other."""
     cut = val["event_date"].sort_values().iloc[len(val) // 2]
     halves = [val[val["event_date"] < cut], val[val["event_date"] >= cut]]
     scores = {}
-    for method in ("none", "sigmoid", "isotonic"):
+    for method in CALIBRATION_CANDIDATES:
         ll = []
         for fit_half, score_half in [(halves[0], halves[1]), (halves[1], halves[0])]:
             p_fit, y_fit = mirrored_raw(model, fit_half)
@@ -270,6 +281,14 @@ def main() -> None:
         "data_source": {"repo": "https://github.com/Greco1899/scrape_ufc_stats", "commit": source_commit(),
                         "latest_fight_date": str(data["fights"]["event_date"].max().date())},
         "test_metrics": test_metrics,
+        "staleness_policy": {
+            "recalibrate_after_days": RECALIBRATE_AFTER_DAYS,
+            "retrain_after_days": RETRAIN_AFTER_DAYS,
+            "measured_from": "periods.validation.end (last fight the weights/calibrator were fit on)",
+            "note": "Cheap proxies for an ongoing retain/recalibrate/refit decision (model weights "
+                    "age even though fighter profiles keep advancing with every rebuild). Not a "
+                    "formal utility-optimal schedule -- see README 'Model staleness'.",
+        },
     }
     evaluation = {
         "selected_model": selected,

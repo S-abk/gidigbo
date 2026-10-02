@@ -22,3 +22,11 @@ WALK_FORWARD_YEARS = [2017, 2018, 2019, 2020, 2021]
 
 # Fighters with fewer prior UFC fights than this trigger a "limited data" warning.
 LIMITED_HISTORY_THRESHOLD = 3
+
+# Model staleness policy (deep-research robustness recommendation: treat model age as
+# an ongoing decision, not a one-time training run). These are cheap, concrete proxies
+# for the "retain vs. recalibrate vs. refit" tradeoff, not a formal utility-optimal
+# schedule -- just enough to surface a visible warning before weights silently go stale
+# while fighter profiles (data/processed) keep advancing with every `python -m src.train`.
+RECALIBRATE_AFTER_DAYS = 180   # ~6 months: re-fit just the probability calibrator
+RETRAIN_AFTER_DAYS = 365       # ~12 months: rebuild features/models on fresh data

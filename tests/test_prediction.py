@@ -95,3 +95,51 @@ def test_method_context_changes_method_not_winner(predictor):
     assert hw["prob_a"] == pytest.approx(ws["prob_a"])
     assert hw["method"]["overall"]["KO/TKO"] > ws["method"]["overall"]["KO/TKO"]
     assert hw["method"]["overall"]["DEC"] < ws["method"]["overall"]["DEC"]
+
+
+def test_build_roster_names_are_always_unique():
+    """Two different fighters sharing a name, division AND last-fight year must still
+    get distinct display_names (the real cause of a past app crash: 'Bruno Silva')."""
+    import pandas as pd
+    from src.predict import build_roster
+
+    appearances = pd.DataFrame([
+        {"fighter_id": "x1", "event_date": pd.Timestamp("2026-03-01"), "weight_class": "Lightweight"},
+        {"fighter_id": "x2", "event_date": pd.Timestamp("2026-07-01"), "weight_class": "Lightweight"},
+    ])
+    fighters = pd.DataFrame({"fighter_id": ["x1", "x2"], "name": ["Bruno Silva", "Bruno Silva"]})
+    profiles = pd.DataFrame({"n_fights": [5, 5]}, index=["x1", "x2"])
+
+    roster = build_roster(appearances, fighters, profiles)
+    assert roster["display_name"].is_unique
+    assert roster.set_index("fighter_id").loc["x1", "display_name"] != \
+        roster.set_index("fighter_id").loc["x2", "display_name"]
+
+
+def test_duplicate_named_fighters_dont_collide_in_comparison_tables(predictor):
+    """Regression test for the real 'Bruno Silva' bug: selecting two different fighters
+    who share a registered name must not produce duplicate pandas column labels."""
+    dup_names = predictor.roster[predictor.roster["name"].duplicated(keep=False)]
+    if dup_names.empty:
+        pytest.skip("no same-named fighters in the current data to regression-test against")
+    a_id, b_id = dup_names["fighter_id"].iloc[0], dup_names["fighter_id"].iloc[1]
+    pa, pb = predictor.profile(a_id), predictor.profile(b_id)
+    assert pa["name"] == pb["name"]  # the trap: same raw name
+    assert pa["display_name"] != pb["display_name"]  # but distinct, safe table keys
+
+
+def test_explanations_are_not_degenerate(predictor):
+    """Occlusion explanations need a smooth probability mapping. A step-function
+    calibrator (isotonic) once left ~half of all factor groups at exactly 0 impact.
+    Any group whose matchup differences are non-zero should move the probability."""
+    rng = np.random.default_rng(7)
+    ids = predictor.roster[predictor.roster["n_fights"] >= 5]["fighter_id"].to_numpy()
+    moved = total = 0
+    for _ in range(15):
+        a, b = rng.choice(ids, 2, replace=False)
+        for f in predictor.predict_fight(a, b)["factors"]:
+            if any(abs(v) > 1e-9 for v in f["features"].values()):
+                total += 1
+                moved += abs(f["impact"]) > 1e-9
+    assert total > 0
+    assert moved / total >= 0.9, f"only {moved}/{total} non-zero factor groups moved the probability"

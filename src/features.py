@@ -19,6 +19,8 @@ import hashlib
 import numpy as np
 import pandas as pd
 
+from src.ratings import compute_glicko_ratings
+
 # Shrinkage priors: long-run UFC averages computed once from 2001-2021 appearances
 # (training period only), rounded. A fighter's rate is pulled toward these values
 # in proportion to how little data they have, so debutants get league-average
@@ -48,6 +50,7 @@ _SUM_COLS = _COUNT_COLS + _STAT_COLS
 
 # Features that are differenced (A - B) into matchup features. Grouped for explanations.
 FEATURE_GROUPS: dict[str, list[str]] = {
+    "opponent-strength rating": ["glicko_rating", "glicko_rd"],
     "UFC experience": ["n_fights", "win_pct"],
     "recent form": ["wins_last3", "wins_last5", "win_pct_last5", "streak"],
     "age": ["age"],
@@ -214,6 +217,13 @@ def compute_prefight_features(appearances: pd.DataFrame, fighters: pd.DataFrame)
     # Broadcast fighter-day rows back to individual appearances.
     out = app[["fight_id", "fighter_id", "event_date"]].merge(feat, on=["fighter_id", "event_date"], how="left")
     assert len(out) == len(app)
+
+    # Opponent-strength rating (src/ratings.py): same strictly-earlier-dates rule,
+    # computed row-aligned with `app` (a left merge keeps the left row order).
+    ratings = compute_glicko_ratings(app)
+    assert (ratings["fight_id"].values == out["fight_id"].values).all()
+    out["glicko_rating"] = ratings["glicko_rating"].values
+    out["glicko_rd"] = ratings["glicko_rd"].values
     return out
 
 

@@ -44,6 +44,33 @@ def fighter_profiles_as_of(appearances: pd.DataFrame, fighters: pd.DataFrame,
     return prof.loc[fighter_ids]
 
 
+def build_roster(appearances: pd.DataFrame, fighters: pd.DataFrame, profiles: pd.DataFrame) -> pd.DataFrame:
+    """Fighters with at least one UFC fight, with a GUARANTEED-unique display name.
+
+    Two different fighters can share a real name (e.g. two "Bruno Silva"s), so `name`
+    alone is not a safe UI or table key. `display_name` disambiguates by appending
+    division + last-fought year; if that still collides (same name, same division,
+    same year -- not observed in the current data, but not impossible as it grows) the
+    fighter_id is appended as a final, always-unique tie-breaker (the full ID: synthetic
+    IDs such as "amb_<name>_<fight>" share prefixes, so a fragment could still collide).
+    Code must key on `display_name`, never on the raw `name`, wherever two fighters'
+    data could appear in the same table or dict (column headers, dict keys, ...).
+    """
+    a = appearances.sort_values("event_date")
+    last = a.groupby("fighter_id").agg(last_fight=("event_date", "max"), last_weight_class=("weight_class", "last"))
+    r = fighters.set_index("fighter_id")[["name"]].join(last, how="inner")
+    r["n_fights"] = profiles.loc[r.index, "n_fights"].astype(int)
+    dup = r["name"].duplicated(keep=False)
+    r["display_name"] = np.where(dup, r["name"] + " (" + r["last_weight_class"].fillna("?") + ", last "
+                                 + r["last_fight"].dt.year.astype(str) + ")", r["name"])
+    still_dup = r["display_name"].duplicated(keep=False)
+    if still_dup.any():
+        ids = r.index.to_series()
+        r.loc[still_dup, "display_name"] = r.loc[still_dup, "display_name"] + " [" + ids[still_dup] + "]"
+    assert r["display_name"].is_unique
+    return r.reset_index().sort_values(["display_name"]).reset_index(drop=True)
+
+
 class Predictor:
     def __init__(self, model_path=MODELS_DIR / "model.joblib", data_dir=PROCESSED_DIR):
         self.model: FightModel = joblib.load(model_path)
@@ -61,14 +88,7 @@ class Predictor:
     # ------------------------------------------------------------------ lookup
     def _build_roster(self) -> pd.DataFrame:
         """Fighters with at least one UFC fight, with a unique display name."""
-        a = self.appearances.sort_values("event_date")
-        last = a.groupby("fighter_id").agg(last_fight=("event_date", "max"), last_weight_class=("weight_class", "last"))
-        r = self.fighters.set_index("fighter_id")[["name"]].join(last, how="inner")
-        r["n_fights"] = self.profiles.loc[r.index, "n_fights"].astype(int)
-        dup = r["name"].duplicated(keep=False)
-        r["display_name"] = np.where(dup, r["name"] + " (" + r["last_weight_class"].fillna("?") + ", last "
-                                     + r["last_fight"].dt.year.astype(str) + ")", r["name"])
-        return r.reset_index().sort_values(["display_name"]).reset_index(drop=True)
+        return build_roster(self.appearances, self.fighters, self.profiles)
 
     def resolve(self, fighter: str) -> str:
         """Accept a fighter_id, display name or name (unique) and return the fighter_id."""
