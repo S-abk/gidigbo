@@ -131,5 +131,15 @@ def train_method_model(fights, appearances, fighters, log=print) -> tuple[object
     return model, report
 
 
+def refit_method_model_all(fights, appearances, fighters, C: float) -> tuple[object, dict]:
+    """Production refit: the evaluated configuration (same C) trained on every method row
+    from METHOD_MIN_TRAIN_DATE through the latest fight."""
+    t = build_method_table(fights, appearances, fighters)
+    rows = t[t["event_date"] >= METHOD_MIN_TRAIN_DATE]
+    fit = {"start": str(rows["event_date"].min().date()), "end": str(rows["event_date"].max().date()),
+           "n_fights": int(len(rows)), "C": C}
+    return _fit(rows, C), fit
+
+
 def method_given_winner(model, prof_w: pd.DataFrame, prof_l: pd.DataFrame, context: pd.DataFrame) -> np.ndarray:
     return predict_method_proba(model, method_features(prof_w, prof_l, context))

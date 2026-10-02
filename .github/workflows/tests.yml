@@ -19,13 +19,13 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      - name: Get UFCStats source data
-        run: git clone --depth 1 https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats
+      - name: Get UFCStats source data (pinned to the commit the committed model used)
+        run: python -m src.fetch_data
 
       - name: Train (builds the dataset and the models the tests need)
         run: python -m src.train
 
-      - name: Run the test suite
+      - name: Run the test suite (incl. leakage and model-quality gates)
         run: pytest -q

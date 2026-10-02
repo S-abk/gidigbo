@@ -235,6 +235,9 @@ def build_all(save: bool = True) -> dict[str, pd.DataFrame]:
         fights.to_parquet(PROCESSED_DIR / "fights.parquet", index=False)
         app.to_parquet(PROCESSED_DIR / "appearances.parquet", index=False)
         fighters.to_parquet(PROCESSED_DIR / "fighters.parquet", index=False)
+        # Record which upstream data commit these files were built from (see src/fetch_data.py).
+        from src.fetch_data import MARKER, raw_source_commit
+        (PROCESSED_DIR / MARKER).write_text(f"{raw_source_commit() or 'unknown'}\n")
         _log(f"saved to {PROCESSED_DIR}")
     return {"fights": fights, "appearances": app, "fighters": fighters}
 

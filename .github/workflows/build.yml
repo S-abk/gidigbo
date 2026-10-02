@@ -21,8 +21,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Get UFCStats source data
-        run: git clone --depth 1 https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats
+      - name: Get UFCStats source data (pinned to the commit the committed model used)
+        run: python -m src.fetch_data
 
       - name: Build the canonical dataset
         run: python -m src.build_dataset

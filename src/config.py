@@ -30,3 +30,9 @@ LIMITED_HISTORY_THRESHOLD = 3
 # while fighter profiles (data/processed) keep advancing with every `python -m src.train`.
 RECALIBRATE_AFTER_DAYS = 180   # ~6 months: re-fit just the probability calibrator
 RETRAIN_AFTER_DAYS = 365       # ~12 months: rebuild features/models on fresh data
+
+# Production refit: once evaluation has chosen a configuration on held-out data, the
+# deployed model is that same configuration refit on EVERY fight through the latest
+# event, so it learns from recent fights too. Evaluation metrics still come from the
+# held-out run (models/evaluated_model.joblib is that exact artifact).
+PRODUCTION_REFIT = True

@@ -46,15 +46,28 @@ h1, h2, h3, h4, .fp-name {{ font-family: 'Oswald', 'Arial Narrow', sans-serif !i
 
 
 # --------------------------------------------------------------------------- loading
+@st.cache_resource(show_spinner="Preparing fight data (first start downloads it, ~30 s)…")
+def prepare_data(commit: str | None) -> str | None:
+    """Download + build the dataset if missing or built from a different upstream commit
+    than the shipped model (a fresh clone, e.g. a cloud deploy, has no data/ folder)."""
+    from src.fetch_data import ensure_data
+    return ensure_data(commit)
+
+
 @st.cache_resource(show_spinner="Loading model and fighter histories…")
-def load_predictor():
-    from src.predict import get_predictor
-    return get_predictor()
+def load_predictor(data_commit: str | None, model_mtime: float):
+    # Keyed on the data commit and model file so a redeploy with a new model reloads it.
+    from src.predict import Predictor
+    return Predictor()
 
 
 @st.cache_data
-def load_json(name: str) -> dict:
+def load_json(name: str, mtime: float) -> dict:
     return json.loads((MODELS_DIR / name).read_text())
+
+
+def model_json(name: str) -> dict:
+    return load_json(name, (MODELS_DIR / name).stat().st_mtime)
 
 
 st.markdown('<p class="fp-title">Fight <span>Predictor</span></p>'
@@ -65,9 +78,16 @@ if not (MODELS_DIR / "model.joblib").exists():
     st.error("No trained model found. Run `python -m src.train` first, then restart the app.")
     st.stop()
 
-predictor = load_predictor()
-evaluation = load_json("evaluation.json")
-metadata = load_json("model_metadata.json")
+evaluation = model_json("evaluation.json")
+metadata = model_json("model_metadata.json")
+try:
+    data_commit = prepare_data((metadata.get("data_source") or {}).get("commit"))
+except Exception as exc:  # network down on first start, upstream moved, ...
+    st.error(f"Could not prepare the fight data: {exc}. Check the network connection and reload, or "
+             "run `python -m src.fetch_data` then `python -m src.build_dataset` locally.")
+    st.stop()
+MODEL_KEY = (data_commit, (MODELS_DIR / "model.joblib").stat().st_mtime)
+predictor = load_predictor(*MODEL_KEY)
 roster = predictor.roster
 
 
@@ -122,9 +142,10 @@ ACTIVE_DAYS = 730  # "active" = fought within the last two years of data
 
 
 @st.cache_resource(show_spinner=False)
-def fighter_index() -> pd.DataFrame:
-    """Roster plus gender, divisions, record and activity, for filtering and labels."""
-    p = load_predictor()
+def fighter_index(data_commit: str | None, model_mtime: float) -> pd.DataFrame:
+    """Roster plus gender, divisions, record and activity, for filtering and labels.
+    Same cache key as load_predictor, so a redeploy with new data rebuilds it too."""
+    p = load_predictor(data_commit, model_mtime)
     app = p.appearances.sort_values("event_date")
     app = app.assign(female=app["weight_class"].str.startswith("Women's"),
                      division=app["weight_class"].str.removeprefix("Women's "))
@@ -151,7 +172,7 @@ def record_short(row) -> str:
     return s + (f"-{int(row['draws_nc'])}" if row["draws_nc"] else "")
 
 
-fx = fighter_index()
+fx = fighter_index(*MODEL_KEY)
 fx_by_name = fx.set_index("display_name")
 LABELS = {r.display_name: f"{r.display_name}  ·  {division_label(fx_by_name.loc[r.display_name])}  ·  "
                           f"{record_short(fx_by_name.loc[r.display_name])}  ·  last fought {r.last_fight:%b %Y}"
@@ -598,16 +619,29 @@ with tab_perf:
     st.caption(evaluation["selection_rule"].capitalize() + ". The test period was used only once, "
                "after the model had been chosen.")
 
+    pf = metadata.get("production_fit") or {}
+    if pf.get("refit_on_all_data"):
+        st.info(f"**Deployed model:** this configuration refit on all {pf['n_fights']:,} fights from "
+                f"{pf['start']} to {pf['end']}, so it also learns from the most recent fights. The metrics "
+                f"below come from the evaluation run: trained {periods['train']['start']} → "
+                f"{periods['train']['end']}, chosen on {periods['validation']['start']} → "
+                f"{periods['validation']['end']}, scored once on {periods['test']['start']} → "
+                f"{periods['test']['end']} (`models/evaluated_model.joblib`).")
+
     policy = metadata.get("staleness_policy")
     if policy:
-        # Age = time since the last fight the weights/calibrator were fit on (end of the
-        # validation period), NOT since train.py last ran: retraining with unchanged split
-        # dates refits on the same data and makes nothing fresher.
-        fit_end = periods["validation"]["end"]
+        # Age = time since the last fight the deployed weights were fit on, NOT since
+        # train.py last ran: retraining on unchanged data makes nothing fresher.
+        fit_end = pf.get("end") or periods["validation"]["end"]
         age_days = (datetime.now(timezone.utc).date() - datetime.fromisoformat(fit_end).date()).days
         profiles_through = result["as_of"] if result else metadata["data_source"]["latest_fight_date"]
-        refresh = ("To refresh it, move `VALIDATION_START` and `TEST_START` forward in `src/config.py`, "
-                   "then run `python -m src.train`; retraining with unchanged split dates refits on the same data.")
+        if pf.get("refit_on_all_data"):
+            refresh = ("To refresh it, run `python -m src.fetch_data --latest` then `python -m src.train` "
+                       "(the scheduled refresh workflow does this weekly).")
+        else:
+            refresh = ("To refresh it, move `VALIDATION_START` and `TEST_START` forward in `src/config.py`, "
+                       "then run `python -m src.train`; retraining with unchanged split dates refits on the "
+                       "same data.")
         if age_days >= policy["retrain_after_days"]:
             st.error(f"The model learned from fights up to {fit_end} ({age_days} days ago), past the "
                      f"{policy['retrain_after_days']}-day retrain guideline. Fighter profiles are current "

@@ -1,0 +1,85 @@
+name: Refresh data and model
+
+# Weekly: pull the newest UFCStats data, retrain (held-out evaluation + production refit
+# on every fight through the latest event), run every test and the model-quality gate
+# against the currently committed model, and commit the new model files only if all of
+# that passes. A push to main redeploys the app (e.g. Streamlit Community Cloud), which
+# then downloads the matching data on its next start.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Mondays 09:00 UTC, after weekend events
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Retrain even if the upstream data hasn't changed"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # higher GitHub API rate limit for fetch_data
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Check for new upstream data
+        id: check
+        run: |
+          latest=$(python -m src.fetch_data --print-latest-commit)
+          current=$(python -c "import json; print(json.load(open('models/model_metadata.json'))['data_source'].get('commit') or '')")
+          echo "upstream: $latest   committed model: $current"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ] || [ "${{ inputs.force }}" = "true" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new data; nothing to do."
+          fi
+
+      - name: Keep the committed model for comparison
+        if: steps.check.outputs.changed == 'true'
+        run: cp -r models "$RUNNER_TEMP/previous_models"
+
+      - name: Download the latest source data
+        if: steps.check.outputs.changed == 'true'
+        run: python -m src.fetch_data --latest
+
+      - name: Retrain (held-out evaluation, then production refit)
+        if: steps.check.outputs.changed == 'true'
+        run: python -m src.train
+
+      - name: Run the test suite (incl. leakage and model-quality gates)
+        if: steps.check.outputs.changed == 'true'
+        run: pytest -q
+
+      - name: Quality gate against the committed model
+        if: steps.check.outputs.changed == 'true'
+        run: python -m src.quality_gate --previous-dir "$RUNNER_TEMP/previous_models"
+
+      - name: Commit the refreshed model
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/
+          if git diff --cached --quiet; then echo "Model files unchanged."; exit 0; fi
+          git commit -m "Refresh data and model (scrape_ufc_stats@${{ steps.check.outputs.latest }})"
+          git push

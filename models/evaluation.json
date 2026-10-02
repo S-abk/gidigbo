@@ -176,15 +176,15 @@
     "random_forest": {
       "calibration": {
         "mean_predicted": [
-          0.2765452655287607,
+          0.27654526552876063,
           0.3425894386384354,
-          0.38644849844067747,
-          0.4288729821692207,
+          0.3864484984406774,
+          0.42887298216922065,
           0.47153265672216765,
           0.511766198227342,
           0.5571008616628429,
           0.6087946455268374,
-          0.6566315379748174,
+          0.6566315379748175,
           0.7231612559906698
         ],
         "fraction_positive": [
@@ -263,7 +263,7 @@
           1.0
         ]
       },
-      "mean_abs_reversal_gap_before_symmetrisation": 0.013554925446144488
+      "mean_abs_reversal_gap_before_symmetrisation": 0.013554925446144487
     },
     "xgboost": {
       "calibration": {
@@ -632,6 +632,12 @@
       "model_log_loss": 1.5532807108574729,
       "baseline_uniform_log_loss": 1.791759469228055,
       "baseline_winner_model_x_method_rates_log_loss": 1.6447291017243217
+    },
+    "production_fit": {
+      "start": "2010-01-02",
+      "end": "2026-09-26",
+      "n_fights": 7485,
+      "C": 0.01
     }
   }
 }

@@ -15,7 +15,8 @@ local Streamlit UI.
 
 ## Quick start
 
-Requires Python 3.10+ (developed on 3.12). Run all commands from the project root (`ufc_predictor/`).
+Requires Python 3.12, the version CI tests and the pinned dependencies were resolved for. Run all
+commands from the repository root.
 
 **1. Create and activate a virtual environment**
 
@@ -31,20 +32,27 @@ python -m venv .venv
 
 (On macOS/Linux you may need `python3` instead of `python`.)
 
-**2. Install dependencies and get the data**
+**2. Install dependencies and launch**
 
 ```bash
-pip install -r requirements.txt
-git clone https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats
+pip install -r requirements-dev.txt   # runtime deps (requirements.txt) + pytest
+streamlit run app.py                  # opens the UI in your browser
 ```
 
-**3. Train, launch and test**
+The trained models are in the repository, so the app runs without training. On its first start it
+downloads the four source CSVs it needs (~10 MB) and builds the dataset, which takes about 30 s. The
+download is pinned to the exact upstream commit the shipped model was trained on.
+
+**3. Retrain and test (optional)**
 
 ```bash
-python -m src.train        # builds the dataset, trains, evaluates, saves models/ (~30 s)
-streamlit run app.py       # opens the UI in your browser
-pytest -q                  # leakage, reversal, schema and prediction tests
+python -m src.fetch_data   # the source CSVs, pinned (add --latest for the newest data)
+python -m src.train        # builds the dataset, evaluates, refits for production, saves models/ (~40 s)
+pytest -q                  # leakage, reversal, schema, prediction and model-quality tests
 ```
+
+You can also `git clone https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats`
+yourself. A git checkout there is used as-is and never overwritten.
 
 To predict from the command line: `python -m src.predict "Islam Makhachev" "Charles Oliveira"`.
 
@@ -55,19 +63,23 @@ To predict from the command line: `python -m src.predict "Islam Makhachev" "Char
 ```text
 ufc_predictor/
 ├── app.py                    Streamlit UI (Predict / Upcoming Card / Fighter Comparison / Model Performance / Model Insights)
-├── requirements.txt
+├── requirements.txt          runtime dependencies, pinned
+├── requirements-dev.txt      + pytest
+├── .github/workflows/        build, tests, weekly data/model refresh
 ├── data/
 │   ├── raw/scrape_ufc_stats/ cloned source repo (CSV files, not modified)
 │   └── processed/            fights / appearances / fighters parquet (generated)
 ├── models/
-│   ├── model.joblib          production model (base estimator + calibrator)
-│   ├── method_model.joblib   method-of-victory model
+│   ├── model.joblib          deployed model: the chosen configuration refit on all fights
+│   ├── method_model.joblib   method-of-victory model (deployed, refit on all data)
+│   ├── evaluated_*.joblib    the exact artifacts the held-out metrics describe
 │   ├── model_metadata.json   periods, features, hyperparameters, metrics, data commit
 │   ├── evaluation.json       all models' test results, diagnostics, importance
 │   └── candidate_*.joblib    the other evaluated models (generated)
 ├── src/
 │   ├── config.py             paths, seed, split dates
 │   ├── data_loader.py        raw CSV loading and parsing (documents field provenance)
+│   ├── fetch_data.py         download the source CSVs (pinned commit) and build the dataset if missing
 │   ├── build_dataset.py      canonical fights + per-fighter appearances, fighter ID resolution
 │   ├── features.py           pre-fight profiles, matchup differences, A/B orientation, mirroring
 │   ├── modeling.py           model definitions, calibration, symmetric prediction rule
@@ -75,6 +87,7 @@ ufc_predictor/
 │   ├── train.py              split, walk-forward CV, calibration, selection, test evaluation
 │   ├── evaluate.py           metrics and diagnostics
 │   ├── predict.py            Predictor / predict_fight(), explanations
+│   ├── quality_gate.py       model-quality gate used by CI and the refresh workflow
 │   ├── ratings.py            leakage-safe Glicko-1 opponent-strength ratings
 │   └── upcoming.py           scheduled events + fight cards from Wikipedia (on demand)
 └── tests/
@@ -267,14 +280,28 @@ The 261 fights before 2001 are used only as fighter history.
 4. **Production model** = lowest cross-fitted validation log loss. If another model beats logistic
    regression by less than 0.002, the interpretable logistic regression wins.
 5. **The test set is scored once,** after selection.
+6. **Production refit.** The deployed model is the chosen configuration (same model family,
+   hyperparameters and calibration method) refit on *every* fight from 2001 through the latest
+   event. Nothing is re-chosen at this step. If a calibrator is selected, it is fit on out-of-time
+   predictions: each year from 2022 on is predicted by a model trained only on earlier fights.
 
 Selected: **logistic regression** (C = 0.01, no extra calibration: cross-fitting found the raw
 logistic regression already as well calibrated as Platt scaling). Its cross-fitted validation log loss
-was 0.6473, versus 0.6495 for XGBoost and 0.6569 for random forest. The shipped `model.joblib` is
-exactly the evaluated artifact: trained on the training period and calibrated on validation. At
-prediction time it uses fighter histories through the latest fight in the data.
+was 0.6473, versus 0.6495 for XGBoost and 0.6569 for random forest.
+
+- **The metrics below come from the held-out run.** That run trained through 2021, chose on 2022–23
+  and scored 2024+; it is saved as `models/evaluated_model.joblib`.
+- **The deployed `model.joblib` is the refit.** It learned from 8,493 fights through the latest event
+  and changes test-period predictions by 1.9 points on average.
+- **No held-out score exists for the refit itself,** since it has seen every fight. This is the
+  standard trade: estimate performance on held-out data, then deploy the same recipe trained on
+  everything.
 
 ## Results (test set, 1,437 fights, 2024-01 → 2026-09)
+
+These figures are a snapshot from October 2026. Each [data refresh](#automatic-data-refresh) adds
+new fights to the test period and recomputes them; the app's **Model Performance** tab always shows
+the current numbers.
 
 | Model | Accuracy | Log loss | Brier | ROC-AUC |
 |-------|---------:|---------:|------:|--------:|
@@ -447,19 +474,20 @@ in its data, and its website now blocks scripted access with a JavaScript browse
   as on a strong one. There is no injury, camp, weight-cut or short-notice information.
 - **The win model ignores weight class, title status and 5-round scheduling.** Only the
   method-of-victory model uses them.
-- **Model age.** The shipped model's weights end in 2021 (train) and 2023 (calibration). Fighter
-  profiles are current, but model weights do not include 2024+ fights. See
-  [Model staleness](#model-staleness).
+- **Model age.** The deployed model learns from fights up to the last data refresh. A deployment
+  that doesn't run the refresh workflow slowly goes stale. See [Model staleness](#model-staleness).
 
 ## Retraining / refreshing data
 
 ```bash
-git -C data/raw/scrape_ufc_stats pull     # get the latest scraped fights
-python -m src.train                       # rebuild dataset, retrain, re-evaluate, overwrite models/
+python -m src.fetch_data --latest   # newest scraped fights (or: git -C data/raw/scrape_ufc_stats pull)
+python -m src.train                 # rebuild dataset, re-evaluate, refit for production, overwrite models/
+pytest -q
 ```
 
-Split dates live in `src/config.py` (`VALIDATION_START`, `TEST_START`, `WALK_FORWARD_YEARS`). Move
-them forward as data accumulates.
+Split dates live in `src/config.py` (`VALIDATION_START`, `TEST_START`, `WALK_FORWARD_YEARS`). Keeping
+them fixed is deliberate: every new fight lands in the test period. Over time the test metrics
+increasingly reflect fights that no design decision has seen.
 
 ### Model staleness
 
@@ -470,18 +498,61 @@ guidelines, which are recorded in `models/model_metadata.json`:
 - `RECALIBRATE_AFTER_DAYS = 180`
 - `RETRAIN_AFTER_DAYS = 365`
 
-The **Model Performance** tab shows the model's age. Age is measured from the last fight the weights
-and calibrator were fit on, which is the end of the validation period. It is *not* measured from
-when `train.py` last ran: retraining with unchanged split dates refits on the same data and makes
-nothing fresher. The age shows as a warning past the recalibration guideline and as an error past
-the retrain guideline.
-
-To refresh the model, move `VALIDATION_START` and `TEST_START` forward and retrain. With the
-current split (validation ends 2023-12-16) the tab shows the red retrain state. That is the honest
-cost of shipping exactly the evaluated artifact while holding out 2024+ as the test set.
+The **Model Performance** tab shows the model's age. Age is measured from the last fight the
+deployed weights were fit on (`production_fit.end`), *not* from when `train.py` last ran: retraining
+on unchanged data makes nothing fresher. The age shows as a warning past the recalibration guideline
+and as an error past the retrain guideline. With the production refit and the weekly
+[data refresh](#automatic-data-refresh), the model stays within days of the latest event.
 
 These are cheap stand-ins for a formal retain / recalibrate / refit rule, not an optimal
 schedule.
+
+## Deployment
+
+The app is a single Streamlit script with its trained models committed, so any host that can run
+`streamlit run app.py` works.
+
+**Streamlit Community Cloud** (free, deploys from this GitHub repo):
+1. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub.
+2. Create an app from `S-abk/gidigbo`, branch `main`, main file `app.py`.
+3. Under *Advanced settings*, choose **Python 3.12**. No secrets are needed.
+
+On its first start the app downloads the source data and builds the dataset (~30 s). After that it
+starts in a few seconds. Every push to `main` redeploys the app, including the weekly refresh. If the
+new model was trained on a different upstream commit, the app re-downloads the matching data by
+itself.
+
+**Requirements for a host:**
+- **Memory:** about 550 MB peak on a first start (download + build + model), about 450 MB after that,
+  plus Streamlit's own overhead. A 512 MB tier is too small.
+- **Network:** outbound HTTPS to `raw.githubusercontent.com` (first start) and `en.wikipedia.org`
+  (Upcoming Card tab).
+- **Python 3.12** with `requirements.txt`. The versions are pinned because the models are pickled
+  scikit-learn objects; bump them only together with a retrain.
+
+## Automatic data refresh
+
+`.github/workflows/refresh.yml` runs every Monday at 09:00 UTC and on demand: *Actions → Refresh data
+and model → Run workflow*, with an optional *force* flag.
+
+1. **Skip if nothing changed.** If the upstream data repo has no new commit since the committed
+   model, it stops.
+2. **Retrain.** It downloads the latest CSVs and runs `python -m src.train`: held-out evaluation,
+   then the production refit.
+3. **Gate.** It runs the whole test suite, then `src/quality_gate.py` against the committed model.
+   The gate fails if any of these is true:
+   - the model no longer beats the naive baselines by 0.01 log loss
+   - validation log loss exceeds 0.68
+   - the dataset shrank or has under 8,000 fights, a sign of truncated upstream data
+   - test log loss rose by more than 0.02
+4. **Commit.** Only if everything passed does it commit `models/` as `github-actions[bot]`, which
+   redeploys the app.
+
+Commits made with the workflow's built-in token don't trigger the other CI workflows; the refresh
+runs the same tests itself. In public repositories, GitHub can automatically disable scheduled
+workflows after 60 days without repository activity. If that happens, re-enable it in the Actions
+tab. The app's staleness warning is the backstop: it turns amber, then red, if refreshes stop. A failed run leaves the committed model untouched and shows red in the Actions tab. By default,
+GitHub emails failures of scheduled workflows to whoever last edited the workflow's schedule.
 
 ## Recommendations for the next version
 
@@ -490,8 +561,6 @@ schedule.
   Glicko backtest disclosure).
 - **Opponent-adjusted stats**, such as strikes landed relative to what each opponent usually absorbs,
   and the Glicko rating as an input to the method-of-victory model.
-- **Production refit:** after evaluation, refit the chosen configuration on all data (with
-  time-respecting calibration) for the production model.
 - **Bout context in the UI:** weight class, 5-round and title flags as inputs, plus interactions
   learned from training.
 - **Pre-UFC records** from another source, to reduce debutant uncertainty.

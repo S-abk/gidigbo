@@ -15,7 +15,6 @@ Protocol (the test set is touched exactly once, after the model is chosen):
 from __future__ import annotations
 
 import json
-import subprocess
 from datetime import datetime, timezone
 
 import joblib
@@ -25,12 +24,13 @@ from sklearn.linear_model import LogisticRegression
 
 from src import evaluate as ev
 from src.build_dataset import build_all
-from src.config import (MIN_TRAIN_DATE, MODELS_DIR, RANDOM_SEED, RAW_DIR, RECALIBRATE_AFTER_DAYS,
+from src.config import (MIN_TRAIN_DATE, MODELS_DIR, PRODUCTION_REFIT, RANDOM_SEED, RECALIBRATE_AFTER_DAYS,
                         RETRAIN_AFTER_DAYS, TEST_START, VALIDATION_START, WALK_FORWARD_YEARS)
+from src.fetch_data import raw_source_commit
 from src.features import (CONTEXT_FEATURES, DIFF_FEATURES, FEATURE_GROUPS, MODEL_FEATURES,
                           build_training_table, mirror)
 from src.method_model import (METHODS, build_method_table, predict_method_proba,
-                               train_method_model)
+                               refit_method_model_all, train_method_model)
 from src.modeling import HAS_XGB, MODEL_GRIDS, Calibrator, FightModel, make_model
 
 # If another model's validation log loss is within this margin of logistic
@@ -180,11 +180,33 @@ def joint_outcome_scores(win_model: FightModel, method_model, test: pd.DataFrame
     return out
 
 
+def refit_for_production(kind: str, params: dict, calibration: str, table: pd.DataFrame) -> tuple[FightModel, dict]:
+    """The selected configuration refit on every fight from MIN_TRAIN_DATE to the latest.
+
+    No hyperparameter, feature or model choice is revisited here -- those were made on
+    held-out data. If a calibrator was selected, it is fit on out-of-time predictions:
+    each year from VALIDATION_START on is predicted by a model trained only on earlier
+    fights, so the calibrator never sees in-sample probabilities.
+    """
+    rows = table[table["event_date"] >= MIN_TRAIN_DATE]
+    model = fit_fight_model(kind, params, rows)
+    if calibration != "none":
+        ps, ys = [], []
+        for year in range(pd.Timestamp(VALIDATION_START).year, rows["event_date"].max().year + 1):
+            start, end = pd.Timestamp(f"{year}-01-01"), pd.Timestamp(f"{year + 1}-01-01")
+            held = rows[(rows["event_date"] >= start) & (rows["event_date"] < end)]
+            if len(held):
+                p, y = mirrored_raw(fit_fight_model(kind, params, rows[rows["event_date"] < start]), held)
+                ps.append(p)
+                ys.append(y)
+        model.calibrator = Calibrator(calibration).fit(np.concatenate(ps), np.concatenate(ys))
+    fit = {"start": str(rows["event_date"].min().date()), "end": str(rows["event_date"].max().date()),
+           "n_fights": int(len(rows)), "calibration": calibration}
+    return model, fit
+
+
 def source_commit() -> str | None:
-    try:
-        return subprocess.check_output(["git", "-C", str(RAW_DIR), "rev-parse", "HEAD"], text=True).strip()
-    except Exception:
-        return None
+    return raw_source_commit()
 
 
 def main() -> None:
@@ -251,12 +273,38 @@ def main() -> None:
     }
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(prod, MODELS_DIR / "model.joblib")
+    joblib.dump(prod, MODELS_DIR / "evaluated_model.joblib")  # the exact artifact the test metrics describe
 
     # ---- 5. method of victory (conditional on the winner), then the joint six-way outcome
     method_model, method_report = train_method_model(data["fights"], data["appearances"], data["fighters"], log=log)
     method_report["test_joint_six_way"] = joint_outcome_scores(prod, method_model, test, data)
-    joblib.dump(method_model, MODELS_DIR / "method_model.joblib")
+    joblib.dump(method_model, MODELS_DIR / "evaluated_method_model.joblib")
+
+    # ---- 6. production refit: same configurations, every fight through the latest event
+    if PRODUCTION_REFIT:
+        deployed, production_fit = refit_for_production(selected, best_params[selected], prod.calibrator.method, table)
+        deployed_method, method_fit = refit_method_model_all(
+            data["fights"], data["appearances"], data["fighters"], method_report["C"])
+        log(f"production refit: {selected} on {production_fit['n_fights']} fights "
+            f"{production_fit['start']} .. {production_fit['end']}; method model on {method_fit['n_fights']} fights")
+    else:
+        deployed, deployed_method = prod, method_model
+        production_fit = {"start": str(train["event_date"].min().date()), "end": str(val["event_date"].max().date()),
+                          "n_fights": int(len(train)), "calibration": prod.calibrator.method}
+        method_fit = None
+    production_fit["refit_on_all_data"] = PRODUCTION_REFIT
+    # The quality gate reads held-out metrics, which describe the *evaluated* model. Record
+    # how closely the *deployed* refit agrees with it on the test period, so the gate also
+    # catches a refit that went wrong (e.g. bad data confined to the newest fights).
+    p_eval, p_dep = prod.predict_proba_symmetric(test), deployed.predict_proba_symmetric(test)
+    production_fit["agreement_with_evaluated_on_test"] = {
+        "mean_abs_diff": float(np.mean(np.abs(p_eval - p_dep))),
+        "same_favourite_rate": float(np.mean((p_eval >= 0.5) == (p_dep >= 0.5))),
+    }
+    log(f"deployed vs evaluated on test: {production_fit['agreement_with_evaluated_on_test']}")
+    method_report["production_fit"] = method_fit
+    joblib.dump(deployed, MODELS_DIR / "model.joblib")
+    joblib.dump(deployed_method, MODELS_DIR / "method_model.joblib")
     for kind, m in models.items():
         joblib.dump(m, MODELS_DIR / f"candidate_{kind}.joblib")
 
@@ -279,12 +327,15 @@ def main() -> None:
         "n_training_rows_mirrored": int(2 * len(train)),
         "random_seed": RANDOM_SEED,
         "data_source": {"repo": "https://github.com/Greco1899/scrape_ufc_stats", "commit": source_commit(),
-                        "latest_fight_date": str(data["fights"]["event_date"].max().date())},
+                        "latest_fight_date": str(data["fights"]["event_date"].max().date()),
+                        "n_fights": int(len(data["fights"])),
+                        "n_binary_outcome_fights": int(data["fights"]["winner_side"].notna().sum())},
         "test_metrics": test_metrics,
+        "production_fit": production_fit,
         "staleness_policy": {
             "recalibrate_after_days": RECALIBRATE_AFTER_DAYS,
             "retrain_after_days": RETRAIN_AFTER_DAYS,
-            "measured_from": "periods.validation.end (last fight the weights/calibrator were fit on)",
+            "measured_from": "production_fit.end (last fight the deployed weights were fit on)",
             "note": "Cheap proxies for an ongoing retain/recalibrate/refit decision (model weights "
                     "age even though fighter profiles keep advancing with every rebuild). Not a "
                     "formal utility-optimal schedule -- see README 'Model staleness'.",
