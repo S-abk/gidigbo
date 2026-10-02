@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get UFCStats source data
+        run: git clone --depth 1 https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats
+
+      - name: Train (builds the dataset and the models the tests need)
+        run: python -m src.train
+
+      - name: Run the test suite
+        run: pytest -q

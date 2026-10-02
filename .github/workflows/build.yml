@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get UFCStats source data
+        run: git clone --depth 1 https://github.com/Greco1899/scrape_ufc_stats data/raw/scrape_ufc_stats
+
+      - name: Build the canonical dataset
+        run: python -m src.build_dataset
+
+      - name: Byte-compile every module (catches syntax errors, incl. app.py)
+        run: python -m py_compile app.py src/*.py tests/*.py
+
+      - name: Import every src module (catches import-time errors)
+        run: |
+          python -c "
+          import importlib, pkgutil, src
+          for m in pkgutil.iter_modules(src.__path__):
+              importlib.import_module(f'src.{m.name}')
+              print('ok:', m.name)
+          "

@@ -1,5 +1,7 @@
 # UFC Fight Predictor (local MVP)
 
+[![Build](https://github.com/S-abk/gidigbo/actions/workflows/build.yml/badge.svg)](https://github.com/S-abk/gidigbo/actions/workflows/build.yml)
+[![Tests](https://github.com/S-abk/gidigbo/actions/workflows/tests.yml/badge.svg)](https://github.com/S-abk/gidigbo/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Estimates **the probability that Fighter A beats Fighter B** for any two UFC fighters. It uses
