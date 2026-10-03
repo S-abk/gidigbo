@@ -466,6 +466,10 @@ in its data, and its website now blocks scripted access with a JavaScript browse
 
 - **On demand only.** Nothing is fetched until you click *Load upcoming events*. Results are cached
   for an hour, and *Refresh* refetches them.
+- **Identifies itself.** Requests use the MediaWiki API with a descriptive User-Agent, as
+  Wikimedia's User-Agent policy asks: client name and version, this repository as the contact, and
+  the HTTP library. It is defined once in `src/config.py` and never includes personal data; a test
+  checks this.
 - **Name matching.** Names are matched to UFCStats fighters after stripping accents, applying the
   alias table and removing Jr./III suffixes. Same-name fighters are resolved by division or weight.
 - **Debutants.** Fighters not in the data are scored as debutants with neutral, league-average
@@ -614,6 +618,41 @@ Prototypes live outside the repository.
   from 15% to 24% with no real trend (z = 1.2 vs the training share), so this is year-to-year
   variation, not drift.
 
+### Round 2: more data sources and matchup features
+
+Three more studies used the same rules: decision rule fixed in advance, judged on 2017–21
+cross-validation and 2022–23 validation, and the test set never used. A feature is adopted only
+if validation improves with a 95% interval that excludes zero.
+
+| Idea | Validation change [95% CI] | Finding |
+|---|---|---|
+| **Pre-UFC fight histories** (Wikipedia fight-record tables) | −0.0038 [−0.0080, +0.0003] | Not adopted. See the notes below |
+| **Home country** (Wikidata citizenship vs event country) | +0.0011 [−0.0002, +0.0025] | Not adopted. Home fighters win 57.9% at non-US events, but the model already predicts this: 48.9% actual vs 49.8% predicted for home sides |
+| **Altitude venues** (≥ 1,000 m) | ~0.0000 | Not adopted. Too few bouts to test (46 training, 3 validation) |
+| **Margin-aware Glicko** (decision wins count less than finishes) | −0.0003 [−0.004, +0.003] | Not adopted. A small, consistent lean in the right direction; worth re-testing as data grows |
+| **Opponent-adjusted stats** (vs what each opponent usually allows) | +0.0014 [−0.000, +0.003] | Not adopted. 93–99% correlated with the raw stats |
+| **Style-matchup terms** (A's takedowns × B's takedown defence, etc.) | −0.0001 [−0.002, +0.002] | Not adopted. The model's errors show no leftover matchup pattern |
+
+**Pre-UFC fight histories, in more detail:**
+- **Only one usable source.** Sherdog's terms forbid aggregating its content, Tapology's robots.txt
+  disallows AI crawlers and the site sits behind bot protection, Wikidata has no dated fights, and
+  the Kaggle sets were scraped from Sherdog. That leaves Wikipedia's fight-record tables.
+- **Missing exactly where needed.** Only 16% of 2017–23 debutants had a Wikipedia page *before*
+  their UFC debut, and it was 8–10% for 2022–23.
+- **Coverage leaks future success.** In fights where only one fighter had a page, that fighter won
+  82.7% using today's pages, and still 63.3% counting only pages that already existed before the
+  fight.
+- **The apparent gain was fame.** The only significant result came from the leaky version, which
+  used today's pages.
+
+**Venue features:** the same coverage problem appears. The fighter with a known nationality won
+82.5% of one-sided cases, so venue features were only computed when both fighters were covered.
+
+**Conclusion.** Every addition either duplicated an existing signal (the Glicko rating, skill
+differences, age) or depended on public data that is missing when it matters and whose presence
+leaks future success. With public data, the model is close to what the data allows. Further gains
+would most likely need licensed data.
+
 ## Recommendations for the next version
 
 - **Method-model C:** tune it by walk-forward CV over several years, as the win model does, instead
@@ -622,11 +661,11 @@ Prototypes live outside the repository.
 - **Clean re-evaluation:** once enough post-2026 fights exist, score the current pipeline on a new
   test period that no design decision has touched. The current test set has been viewed (see the
   Glicko backtest disclosure).
-- **Opponent-adjusted stats**, such as strikes landed relative to what each opponent usually absorbs,
-  and the Glicko rating as an input to the method-of-victory model.
+- **Margin-aware Glicko**, re-tested as more fights accumulate (the closest call in round 2).
 - **Bout context in the UI:** weight class, 5-round and title flags as inputs, plus interactions
   learned from training.
-- **Pre-UFC records** from another source, to reduce debutant uncertainty.
+- **Pre-UFC records** only through a licensed data feed. Every public source tested was either off
+  limits or missing for debutants (round 2).
 - **Betting odds** as an external *benchmark* for calibration only, not as a feature or product.
 - **SHAP** local explanations for tree models, and per-feature uncertainty or prediction intervals.
 - **Round prediction**, and a round-aware method model.

@@ -20,10 +20,10 @@ import numpy as np
 import pandas as pd
 
 from src.build_dataset import NAME_ALIASES
+from src.config import USER_AGENT
 from src.data_loader import normalize_name
 
 API = "https://en.wikipedia.org/w/api.php"
-USER_AGENT = "ufc-predictor-mvp/0.1 (local research app; https://github.com/Greco1899/scrape_ufc_stats data)"
 MONTHS = {m: i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], start=1)}
 DIVISION_LBS = {"Strawweight": 115, "Flyweight": 125, "Bantamweight": 135, "Featherweight": 145,

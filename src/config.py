@@ -1,4 +1,5 @@
 """Central configuration: paths, seeds and the chronological split."""
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,3 +37,10 @@ RETRAIN_AFTER_DAYS = 365       # ~12 months: rebuild features/models on fresh da
 # event, so it learns from recent fights too. Evaluation metrics still come from the
 # held-out run (models/evaluated_model.joblib is that exact artifact).
 PRODUCTION_REFIT = True
+
+# How this app identifies itself to external services (Wikipedia / Wikimedia API for
+# upcoming cards, GitHub for the source data). Wikimedia's User-Agent policy asks for
+# "<client>/<version> (<contact>) <library>/<version>"; the contact is the repository,
+# never a personal email address (tests/test_upcoming.py checks this).
+USER_AGENT = (f"gidigbo-ufc-predictor/1.0 (+https://github.com/S-abk/gidigbo) "
+              f"python-urllib/{sys.version_info.major}.{sys.version_info.minor}")

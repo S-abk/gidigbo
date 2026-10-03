@@ -96,3 +96,13 @@ def test_parse_fight_card_raises_on_broken_markup():
         parse_fight_card(broken)
     # A page with no MMAevent templates at all is legitimately "nothing to parse".
     assert parse_fight_card("no templates here at all").empty
+
+
+def test_user_agent_identifies_the_app_without_personal_data():
+    """Wikimedia's User-Agent policy asks for a client name and contact; the contact must
+    be the repository, never a personal email address."""
+    from src import fetch_data, upcoming
+    from src.config import USER_AGENT
+    assert upcoming.USER_AGENT == fetch_data.USER_AGENT == USER_AGENT
+    assert "github.com/S-abk/gidigbo" in USER_AGENT
+    assert "@" not in USER_AGENT

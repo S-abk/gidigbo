@@ -27,13 +27,12 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
-from src.config import MODELS_DIR, PROCESSED_DIR, RAW_DIR
+from src.config import MODELS_DIR, PROCESSED_DIR, RAW_DIR, USER_AGENT
 
 SOURCE_REPO = "Greco1899/scrape_ufc_stats"
 RAW_FILES = ["ufc_event_details.csv", "ufc_fight_results.csv", "ufc_fight_stats.csv", "ufc_fighter_tott.csv"]
 PROCESSED_FILES = ["fights.parquet", "appearances.parquet", "fighters.parquet"]
 MARKER = "SOURCE_COMMIT"
-USER_AGENT = "ufc-predictor-mvp/0.1 (+https://github.com/S-abk/gidigbo)"
 
 
 def _log(msg: str) -> None:
