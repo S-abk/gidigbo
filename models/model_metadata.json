@@ -1,5 +1,5 @@
 {
-  "trained_at_utc": "2026-10-12T18:22:16+00:00",
+  "trained_at_utc": "2026-10-19T16:02:19+00:00",
   "model_type": "logistic_regression",
   "estimator_class": "Pipeline",
   "hyperparameters": {
@@ -179,8 +179,8 @@
     },
     "test": {
       "start": "2024-01-13",
-      "end": "2026-10-10",
-      "n_fights": 1462
+      "end": "2026-10-17",
+      "n_fights": 1475
     },
     "min_train_date": "2001-01-01"
   },
@@ -189,28 +189,28 @@
   "random_seed": 42,
   "data_source": {
     "repo": "https://github.com/Greco1899/scrape_ufc_stats",
-    "commit": "5e38ebeb9bb854c9ab4359f8f6f5b444328c555c",
-    "latest_fight_date": "2026-10-10",
-    "n_fights": 8935,
-    "n_binary_outcome_fights": 8779
+    "commit": "3e2f3db5751c14b5d4ea52e41921982ca23b9b23",
+    "latest_fight_date": "2026-10-17",
+    "n_fights": 8948,
+    "n_binary_outcome_fights": 8792
   },
   "test_metrics": {
     "model": "logistic_regression",
-    "n": 1462,
-    "accuracy": 0.6538987688098495,
-    "log_loss": 0.6290768584935864,
-    "brier": 0.2191780863452271,
-    "roc_auc": 0.7054438120758016
+    "n": 1475,
+    "accuracy": 0.6522033898305085,
+    "log_loss": 0.6307809717286896,
+    "brier": 0.21996829756017483,
+    "roc_auc": 0.7024018433179724
   },
   "production_fit": {
     "start": "2001-02-23",
-    "end": "2026-10-10",
-    "n_fights": 8518,
+    "end": "2026-10-17",
+    "n_fights": 8531,
     "calibration": "none",
     "refit_on_all_data": true,
     "agreement_with_evaluated_on_test": {
-      "mean_abs_diff": 0.018845530357003787,
-      "same_favourite_rate": 0.9534883720930233
+      "mean_abs_diff": 0.01861189269770157,
+      "same_favourite_rate": 0.9538983050847457
     }
   },
   "staleness_policy": {
